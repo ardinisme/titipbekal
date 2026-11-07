@@ -11,7 +11,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = { darkMode: 'class' }</script>
 
-<!-- Script Auto-PWA (Membuat Aplikasi Bisa Diinstall) -->
+<!-- Script Auto-PWA (Akan di-blokir browser modern jika tidak dipisah & dihosting HTTPS) -->
 <script>
   (function initPWA() {
     const iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#f59e0b" rx="100"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="300" font-family="sans-serif" fill="#fff" font-weight="bold">T</text></svg>';
@@ -115,7 +115,6 @@
     .print-struk .dashed-line { border-top: 1px dashed #000; margin: 8px 0; }
     
     /* Format Cetak: Rekap (A4/PDF) */
-    /* MENGGUNAKAN SYSTEM-UI AGAR MENYESUAIKAN FONT YANG TERSEDIA */
     .print-a4 { width: 100%; font-family: system-ui, -apple-system, sans-serif; color: #000; }
     .print-a4 table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     .print-a4 th, .print-a4 td { border: 1px solid #000; padding: 8px; text-align: left; color: #000; }
@@ -258,6 +257,8 @@ function PrintOverlay({ printData, settings, getSupplierName, getMenuName }) {
         `}
         <div class="dashed-line"></div>
         <p style=${{ textAlign:'center', margin:'10px 0 0 0', fontSize:11 }}>Terima Kasih</p>
+        <div class="dashed-line" style=${{ marginTop: '8px', marginBottom: '4px' }}></div>
+        <div class="dashed-line" style=${{ marginTop: '0', marginBottom: '0' }}></div>
         <!-- JARAK POTONG EKSTRA UNTUK PRINTER THERMAL -->
         <div style=${{ height: '15mm' }}></div> 
       </div>
@@ -346,6 +347,8 @@ function Struk({ receipt: r, bizInfo }) {
       ${r.metode === 'tunai' && row('Kembali', 'Rp ' + formatRp(r.kembali))}
       <div class="dashed-line"></div>
       <p style=${{ textAlign:'center', margin:'10px 0 0 0', fontSize:11 }}>Terima Kasih</p>
+      <div class="dashed-line" style=${{ marginTop: '8px', marginBottom: '4px' }}></div>
+      <div class="dashed-line" style=${{ marginTop: '0', marginBottom: '0' }}></div>
       <!-- JARAK POTONG EKSTRA -->
       <div style=${{ height: '15mm' }}></div>
     </div>
@@ -369,7 +372,6 @@ function Kasir({ menus, hargaJual, bizInfo, notify, executePrint }) {
   const lines = menus.filter(m => cart[m.id] > 0).map(m => ({ menuId: m.id, nama: m.nama, qty: cart[m.id], harga }));
   const total = lines.reduce((s, l) => s + l.qty * l.harga, 0);
   
-  // FIX: Perlindungan agar nilai input bayar tidak bisa jadi minus
   const bayarNum = metode === 'tunai' ? Math.max(0, (Number(bayar) || 0)) : total;
   const kembali = bayarNum - total;
   const canPay = lines.length > 0 && harga > 0 && kembali >= 0;
@@ -380,7 +382,6 @@ function Kasir({ menus, hargaJual, bizInfo, notify, executePrint }) {
   const omzet = viewSales.reduce((s, x) => s + x.total, 0);
   const viewPcs = viewSales.reduce((s, x) => s + x.items.reduce((a, i) => a + i.qty, 0), 0);
 
-  // FIX: Menggunakan executePrint terpusat dari App, menghilangkan race condition DOM print
   const cetak = (sale) => {
     executePrint({ type: 'kasir', receipt: sale });
   };
@@ -742,7 +743,6 @@ function App() {
       `;
     }
 
-    // FIX: Mengirim executePrint ke Kasir agar dirender melaui portal utama App
     if (activeTab === 'penjualan') return html`<${Kasir} menus=${menus} hargaJual=${settings.hargaJual} bizInfo=${settings.bizInfo} notify=${notify} executePrint=${executePrint} />`;
 
     if (activeTab === 'master') {
