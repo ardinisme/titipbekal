@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>TitipBekal Lite</title>
+<title>TitipBekal</title>
 
 <!-- Font & Tailwind -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,9 +11,29 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = { darkMode: 'class' }</script>
 
-<!-- Barcode & Scanner Libraries -->
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<!-- Script Auto-PWA (Membuat Aplikasi Bisa Diinstall) -->
+<script>
+  (function initPWA() {
+    const iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#f59e0b" rx="100"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="300" font-family="sans-serif" fill="#fff" font-weight="bold">T</text></svg>';
+    const iconUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(iconSvg);
+    const manifest = {
+      name: "TitipBekal", short_name: "TitipBekal", display: "standalone",
+      start_url: location.href.split('?')[0], background_color: "#ffffff", theme_color: "#f59e0b",
+      icons: [{ src: iconUrl, sizes: "512x512", type: "image/svg+xml" }]
+    };
+    const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'}));
+    const link = document.createElement('link'); link.rel = 'manifest'; link.href = manifestUrl;
+    document.head.appendChild(link);
+
+    const swCode = "self.addEventListener('install', e => self.skipWaiting()); self.addEventListener('activate', e => e.waitUntil(clients.claim())); self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => new Response('Offline Mode'))));";
+    const swUrl = URL.createObjectURL(new Blob([swCode], {type: 'application/javascript'}));
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register(swUrl).catch(console.error);
+  })();
+</script>
+
+<!-- QR Code & Scanner Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
 
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -31,7 +51,7 @@
     --muted: #9ca3af; --border: #374151; --card: #1f2937;
     --shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
   }
-  body { font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased; margin: 0; }
 
   .anim-up { animation: fadeUp 0.3s ease-out both; }
   @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
@@ -49,6 +69,7 @@
   .input-field { width: 100%; background: var(--paper2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 14px; color: var(--ink); outline: none; transition: border-color 0.15s; }
   .input-field:focus { border-color: var(--accent); }
   .input-field[type="file"] { padding: 6px; font-size: 12px; cursor: pointer; }
+  .input-field[type="color"] { cursor: pointer; }
 
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .modal-box { background: var(--card); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
@@ -56,42 +77,57 @@
   .toast { position: fixed; bottom: 24px; right: 24px; z-index: 200; background: var(--ink); color: var(--paper); padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.15); animation: fadeUp 0.3s both; }
 
   .tab-bar { display:flex; gap:4px; background:var(--paper2); padding:4px; border-radius:10px; border:1px solid var(--border); width:fit-content; }
-  .tab-btn { padding:8px 16px; font-size:13px; font-weight:600; border-radius:7px; color:var(--muted); cursor:pointer; transition:all .15s; border:none; background:transparent; display:inline-flex; align-items:center; justify-content:center; gap:6px; flex: 1; }
+  .tab-btn { padding:8px 10px; font-size:13px; font-weight:600; border-radius:7px; color:var(--muted); cursor:pointer; transition:all .15s; border:none; background:transparent; display:inline-flex; align-items:center; justify-content:center; gap:6px; flex: 1; }
   .tab-btn.active { background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.1); }
 
-  /* MENGATUR TAMPILAN CETAK (HIGH CONTRAST B&W) */
+  /* MENGATUR TAMPILAN CETAK */
   @media screen {
     .print-only { display: none !important; }
   }
   @media print {
-    body { background: white !important; color: black !important; margin: 0; padding: 0; }
+    /* Hapus margin cetak default browser agar thermal proporsional */
+    @page { margin: 0; }
+    body { background: white !important; margin: 0; padding: 0; }
     .no-print { display: none !important; }
     .print-only { display: block !important; width: 100%; }
     
-    /* Format Cetak: Struk Bluetooth Thermal (58mm) */
-    .print-struk { width: 58mm; margin: 0; padding: 0; font-family: 'DM Mono', monospace; font-size: 12px; line-height: 1.4; color: #000; }
+    .print-color-exact {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    
+    /* Format Cetak: Struk Bluetooth Thermal (Lebar aman 57mm) */
+    .print-struk { 
+      width: 100%; 
+      max-width: 57mm; 
+      margin: 0; 
+      padding: 4mm; 
+      font-family: 'DM Mono', monospace; 
+      font-size: 12px; 
+      line-height: 1.4; 
+      color: #000; 
+      box-sizing: border-box; 
+    }
     .print-struk h3 { font-size: 16px; text-align: center; margin: 0 0 4px 0; color: #000; }
     .print-struk .biz-info { text-align: center; font-size: 10px; margin-bottom: 8px; color: #000; }
     .print-struk table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     .print-struk th, .print-struk td { padding: 4px 0; vertical-align: top; border-bottom: 1px dashed #000; }
     .print-struk .dashed-line { border-top: 1px dashed #000; margin: 8px 0; }
     
-    /* Format Cetak: Daftar Menu Harian & Rekap (A4/PDF) */
-    .print-a4 { width: 100%; font-family: 'DM Sans', sans-serif; color: #000; }
-    .print-a4 .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-    .print-a4 .header h2 { margin: 0; font-size: 24px; color: #000; }
-    .print-a4 .header p { margin: 4px 0 0 0; font-size: 14px; color: #444; }
+    /* Format Cetak: Rekap (A4/PDF) */
+    /* MENGGUNAKAN SYSTEM-UI AGAR MENYESUAIKAN FONT YANG TERSEDIA */
+    .print-a4 { width: 100%; font-family: system-ui, -apple-system, sans-serif; color: #000; }
     .print-a4 table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     .print-a4 th, .print-a4 td { border: 1px solid #000; padding: 8px; text-align: left; color: #000; }
     .print-a4 th { background: #f0f0f0; }
-    .menu-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    .kategori-title { font-size: 18px; font-weight: bold; margin-top: 16px; border-bottom: 2px solid #000; padding-bottom: 4px; color: #000; }
-    .menu-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #ccc; }
+    
+    /* Grid Khusus Menu Harian Poster */
+    .menu-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
   }
 
-  /* Override html5-qrcode styling to fit mobile better */
+  /* Override html5-qrcode styling */
   #qr-reader { border: none !important; border-radius: 8px; overflow: hidden; }
-  #qr-reader button { background: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; margin: 4px; cursor: pointer; }
+  #qr-reader button { background: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; margin: 4px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
 </style>
 </head>
 <body>
@@ -104,43 +140,14 @@ import htm from 'https://esm.sh/htm@3.1.1';
 
 const html = htm.bind(h);
 
-const GAS_TEMPLATE = `// Gunakan ini pada Google Apps Script (script.new)
-function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    function writeSheet(sheetName, headers, items) {
-      var sheet = ss.getSheetByName(sheetName);
-      if(!sheet) { sheet = ss.insertSheet(sheetName); }
-      sheet.clear();
-      sheet.appendRow(headers);
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-      if(items && items.length > 0) sheet.getRange(2, 1, items.length, headers.length).setValues(items);
-    }
-
-    if(data.suppliers) writeSheet("Suppliers", ["ID", "Nama", "No HP", "Alamat", "Bank", "No Rekening"], data.suppliers.map(s => [s.id, s.nama, s.hp, s.alamat, s.bank||'', s.rekening||'']));
-    if(data.menus) writeSheet("Menus", ["ID", "Supplier ID", "Nama Menu", "Kategori"], data.menus.map(m => [m.id, m.supplierId, m.nama, m.kategori]));
-    if(data.titip) {
-      var titipRows = []; data.titip.forEach(t => t.items.forEach(i => titipRows.push([t.id, t.tanggal, t.supplierId, i.menuId, i.qty])));
-      writeSheet("Titip", ["ID Transaksi", "Tanggal", "Supplier ID", "Menu ID", "Qty Titip"], titipRows);
-    }
-    if(data.ambil) {
-      var ambilRows = []; data.ambil.forEach(a => a.items.forEach(i => ambilRows.push([a.id, a.titipId||'', a.tanggal, a.supplierId, i.menuId, i.sisa, i.terjual, a.hargaJual||0, a.komisi||0])));
-      writeSheet("Ambil_Jual", ["ID Transaksi", "ID Titip", "Tanggal", "Supplier ID", "Menu ID", "Sisa", "Terjual", "Harga Jual", "Komisi"], ambilRows);
-    }
-    
-    return ContentService.createTextOutput(JSON.stringify({ok: true})).setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({error: err.toString()})).setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
-
 const LS = { get: (k, def) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-
 const formatRp = (n) => new Intl.NumberFormat('id-ID').format(n);
+const localDate = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+const dateID = (s, opt) => new Date(s + 'T00:00:00').toLocaleDateString('id-ID', opt);
+const pad3 = (n) => String(n).padStart(3, '0');
 const formatWA = (hp) => { let n = hp.replace(/\D/g, ''); if (n.startsWith('0')) n = '62' + n.substring(1); return n; };
 
+// Icons
 const I = {
   Plus: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
   Trash: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
@@ -148,7 +155,6 @@ const I = {
   X: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
   Check: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`,
   Inbox: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
-  Outbox: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="12" y1="11" x2="12" y2="2"/><polyline points="9 5 12 2 15 5"/></svg>`,
   Calendar: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   Search: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
   Users: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
@@ -159,7 +165,8 @@ const I = {
   MessageCircle: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`,
   Sun: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
   Moon: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
-  Scan: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>`
+  Scan: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>`,
+  Copy: (p) => html`<svg ...${p} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`
 };
 
 function Toast({ msg, type }) {
@@ -173,18 +180,27 @@ function Toast({ msg, type }) {
 }
 
 function PrintOverlay({ printData, settings, getSupplierName, getMenuName }) {
-  if (!printData) return null;
-
-  // Render Barcode saat DOM siap
   useEffect(() => {
-    if (printData && (printData.type === 'titip' || printData.type === 'ambil') && window.JsBarcode) {
+    // Generate QR Code ketika mencetak struk Titip/Ambil
+    if (printData && (printData.type === 'titip' || printData.type === 'ambil') && window.QRCode) {
       setTimeout(() => {
-        window.JsBarcode("#print-barcode", printData.id, {
-          format: "CODE128", width: 1.5, height: 40, displayValue: true, fontSize: 12, margin: 0
-        });
+        const el = document.getElementById("print-qrcode");
+        if (el) {
+          el.innerHTML = "";
+          new QRCode(el, {
+            text: printData.id,
+            width: 95,
+            height: 95,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.M
+          });
+        }
       }, 50);
     }
   }, [printData]);
+  
+  if (!printData) return null;
 
   const biz = settings.bizInfo;
   const BizHeader = () => html`
@@ -197,132 +213,268 @@ function PrintOverlay({ printData, settings, getSupplierName, getMenuName }) {
     <div class="dashed-line"></div>
   `;
 
+  // === CETAK STRUK KASIR ===
+  if (printData.type === 'kasir') {
+    return html`<${Struk} receipt=${printData.receipt} bizInfo=${biz} />`;
+  }
+
+  // === CETAK TITIP & AMBIL ===
   if (printData.type === 'titip' || printData.type === 'ambil') {
-    const tgl = new Date(printData.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const tgl = dateID(printData.tanggal, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
     const supName = getSupplierName(printData.supplierId);
-    
     let totalLaku = 0, kotor = 0, potKomisi = 0, bersih = 0;
     if(printData.type === 'ambil') {
       const hj = printData.hargaJual || 0;
       const kom = printData.komisi || 0;
       printData.items.forEach(i => totalLaku += i.terjual);
-      kotor = totalLaku * hj;
-      potKomisi = totalLaku * kom;
-      bersih = kotor - potKomisi;
+      kotor = totalLaku * hj; potKomisi = totalLaku * kom; bersih = kotor - potKomisi;
     }
-
     return html`
       <div class="print-struk">
         <${BizHeader} />
-        <p style=${{ margin:0, fontSize:12 }}>Tgl: ${tgl}<br/>Sup: ${supName}<br/>Tipe: <b>${printData.type === 'titip' ? 'PENITIPAN' : 'PENGAMBILAN (REKAP)'}</b></p>
-        
-        <div style=${{ textAlign: 'center', marginTop: 10, marginBottom: 5 }}>
-          <svg id="print-barcode"></svg>
-        </div>
-        
+        <p style=${{ margin:0, fontSize:12 }}>Tgl: ${tgl}<br/>Sup: ${supName}<br/>Tipe: <b>${printData.type === 'titip' ? 'PENITIPAN' : 'PENGAMBILAN'}</b></p>
+        <div id="print-qrcode" style=${{ display: 'flex', justifyContent: 'center', marginTop: 10, marginBottom: 5 }}></div>
         <div class="dashed-line"></div>
         <table>
-          <thead>
-            <tr style=${{ textAlign:'left', fontSize:11 }}>
-              <th>Menu</th>
-              <th style=${{ textAlign:'center', width:30 }}>${printData.type === 'titip' ? 'Qty' : 'Ttp'}</th>
-              ${printData.type === 'ambil' ? html`<th style=${{ textAlign:'center', width:30 }}>Sisa</th><th style=${{ textAlign:'center', width:30 }}>Laku</th>` : null}
-            </tr>
-          </thead>
+          <thead><tr style=${{ textAlign:'left', fontSize:11 }}>
+            <th>Menu</th><th style=${{ textAlign:'center', width:30 }}>${printData.type === 'titip' ? 'Qty' : 'Ttp'}</th>
+            ${printData.type === 'ambil' ? html`<th style=${{ textAlign:'center', width:30 }}>Sisa</th><th style=${{ textAlign:'center', width:30 }}>Laku</th>` : null}
+          </tr></thead>
           <tbody>
-            ${printData.items.map(item => html`
-              <tr>
-                <td style=${{ paddingRight:4 }}>${getMenuName(item.menuId)}</td>
-                <td style=${{ textAlign:'center' }}>${printData.type === 'titip' ? item.qty : item.awal}</td>
-                ${printData.type === 'ambil' ? html`
-                  <td style=${{ textAlign:'center' }}>${item.sisa}</td>
-                  <td style=${{ textAlign:'center', fontWeight:'bold' }}>${item.terjual}</td>
-                ` : null}
-              </tr>
-            `)}
+            ${printData.items.map(item => html`<tr>
+              <td style=${{ paddingRight:4 }}>${getMenuName(item.menuId)}</td>
+              <td style=${{ textAlign:'center' }}>${printData.type === 'titip' ? item.qty : item.awal}</td>
+              ${printData.type === 'ambil' ? html`<td style=${{ textAlign:'center' }}>${item.sisa}</td><td style=${{ textAlign:'center', fontWeight:'bold' }}>${item.terjual}</td>` : null}
+            </tr>`)}
           </tbody>
         </table>
-        
         ${printData.type === 'ambil' && html`
           <div class="dashed-line"></div>
-          <div style=${{display:'flex', justifyContent:'space-between'}}><span>Total Laku:</span> <span>${totalLaku} pcs</span></div>
+          <div style=${{display:'flex', justifyContent:'space-between'}}><span>Laku:</span> <span>${totalLaku} pcs</span></div>
           <div style=${{display:'flex', justifyContent:'space-between'}}><span>Bruto:</span> <span>Rp ${formatRp(kotor)}</span></div>
-          <div style=${{display:'flex', justifyContent:'space-between'}}><span>Komisi Lapak:</span> <span>-Rp ${formatRp(potKomisi)}</span></div>
+          <div style=${{display:'flex', justifyContent:'space-between'}}><span>Komisi:</span> <span>-Rp ${formatRp(potKomisi)}</span></div>
           <div class="dashed-line"></div>
-          <div style=${{display:'flex', justifyContent:'space-between', fontWeight:'bold', fontSize:13}}><span>Total Bersih:</span> <span>Rp ${formatRp(bersih)}</span></div>
+          <div style=${{display:'flex', justifyContent:'space-between', fontWeight:'bold', fontSize:13}}><span>Bersih:</span> <span>Rp ${formatRp(bersih)}</span></div>
         `}
-
         <div class="dashed-line"></div>
         <p style=${{ textAlign:'center', margin:'10px 0 0 0', fontSize:11 }}>Terima Kasih</p>
+        <!-- JARAK POTONG EKSTRA UNTUK PRINTER THERMAL -->
+        <div style=${{ height: '15mm' }}></div> 
       </div>
     `;
   }
 
-  if (printData.type === 'harian' || printData.type === 'rekap') {
-    // ... (Kode cetak A4 harian & rekap sama seperti sebelumnya, dilewati untuk ringkas di pemikiran, namun kode utuh di bawah)
-    const tgl = new Date(printData.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    
-    if (printData.type === 'harian') {
-      return html`
-        <div class="print-a4">
-          <div class="header">
-            ${biz.logo && html`<img src=${biz.logo} style=${{maxHeight:80, marginBottom:10, display:'block', margin:'0 auto'}} />`}
-            <h2>${biz.nama || 'TITIP BEKAL'}</h2>
-            <p>${biz.alamat} | Telp: ${biz.telp}</p>
-          </div>
-          <h3 style=${{textAlign:'center', marginTop:20, marginBottom:10}}>Daftar Menu Harian - ${tgl}</h3>
-          <div class="menu-grid">
-            ${Object.entries(printData.groupedMenus).map(([kat, menus]) => html`
-              <div>
-                <div class="kategori-title">${kat || 'Lainnya'}</div>
+  // === CETAK HARIAN ===
+  if (printData.type === 'harian') {
+    const tgl = dateID(printData.tanggal, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const bg = settings.harianBgColor || '#f9fafb';
+    const tc = settings.harianTextColor || '#111827';
+    return html`
+      <div class="print-a4 print-color-exact" style=${{ background: bg, minHeight: '100vh', padding: '40px', boxSizing: 'border-box' }}>
+        <div style=${{ borderBottom: `3px solid ${tc}`, paddingBottom: 20, textAlign: 'center' }}>
+          ${biz.logo && html`<img src=${biz.logo} style=${{maxHeight:90, marginBottom:12, display:'block', margin:'0 auto'}} />`}
+          <h1 style=${{ color: tc, margin: 0, fontSize: 32 }}>${biz.nama || 'TITIP BEKAL'}</h1>
+          <p style=${{ color: tc, margin: '8px 0 0 0', fontSize: 16, opacity: 0.9 }}>${biz.alamat} | Telp: ${biz.telp}</p>
+        </div>
+        <h2 style=${{textAlign:'center', marginTop:30, marginBottom:30, color: tc, fontSize: 24}}>Daftar Menu Harian<br/><span style=${{fontSize:18, fontWeight:'normal'}}>${tgl}</span></h2>
+        <div class="menu-grid">
+          ${Object.entries(printData.groupedMenus).map(([kat, menus]) => html`
+            <div style=${{ background: 'rgba(255,255,255,0.2)', padding: 16, borderRadius: 12, border: `2px solid ${tc}` }}>
+              <div style=${{ borderBottom: `2px solid ${tc}`, color: tc, fontWeight: 'bold', fontSize:18, paddingBottom: 8, marginBottom: 12 }}>
+                ${kat || 'Lainnya'}
+              </div>
+              <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
                 ${menus.map(m => html`
-                  <div class="menu-item">
-                    <span style=${{ fontWeight:600 }}>${m.nama}</span>
+                  <div style=${{ display:'flex', justifyContent:'space-between', borderBottom: `1px dashed ${tc}`, paddingBottom: 6 }}>
+                    <span style=${{ fontWeight:600, color: tc, fontSize:15 }}>${m.nama}</span>
                   </div>
                 `)}
               </div>
-            `)}
-          </div>
+            </div>
+          `)}
         </div>
-      `;
-    } else {
-      return html`
-        <div class="print-a4">
-          <div class="header">
-            ${biz.logo && html`<img src=${biz.logo} style=${{maxHeight:80, marginBottom:10, display:'block', margin:'0 auto'}} />`}
-            <h2>${biz.nama || 'TITIP BEKAL'}</h2>
-            <p>Laporan Rekapitulasi Harian - ${tgl}</p>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>No</th>
-                <th>Supplier</th>
-                <th>Nama Menu</th>
-                <th style=${{textAlign:'center'}}>Titip</th>
-                <th style=${{textAlign:'center'}}>Sisa</th>
-                <th style=${{textAlign:'center'}}>Laku</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${printData.rekapList.map((r, i) => html`
-                <tr>
-                  <td>${i+1}</td>
-                  <td>${getSupplierName(r.supplierId)}</td>
-                  <td>${getMenuName(r.menuId)}</td>
-                  <td style=${{textAlign:'center'}}>${r.awal}</td>
-                  <td style=${{textAlign:'center'}}>${r.sisa}</td>
-                  <td style=${{textAlign:'center', fontWeight:'bold'}}>${r.terjual}</td>
-                </tr>
-              `)}
-            </tbody>
-          </table>
+      </div>
+    `;
+  }
+
+  // === CETAK REKAP ===
+  if (printData.type === 'rekap') {
+    const tgl = dateID(printData.tanggal, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return html`
+      <div class="print-a4">
+        <div style=${{textAlign:'center', marginBottom:20, borderBottom:'2px solid #000', paddingBottom:10}}>
+          ${biz.logo && html`<img src=${biz.logo} style=${{maxHeight:80, marginBottom:10, display:'block', margin:'0 auto'}} />`}
+          <h2 style=${{margin:0}}>${biz.nama || 'TITIP BEKAL'}</h2>
+          <p style=${{margin:'4px 0 0 0'}}>Laporan Rekapitulasi Harian - ${tgl}</p>
         </div>
-      `;
-    }
+        <table>
+          <thead><tr><th>No</th><th>Supplier</th><th>Nama Menu</th><th style=${{textAlign:'center'}}>Titip</th><th style=${{textAlign:'center'}}>Sisa</th><th style=${{textAlign:'center'}}>Laku</th></tr></thead>
+          <tbody>
+            ${printData.rekapList.map((r, i) => html`<tr>
+              <td>${i+1}</td><td>${getSupplierName(r.supplierId)}</td><td>${getMenuName(r.menuId)}</td>
+              <td style=${{textAlign:'center'}}>${r.awal}</td><td style=${{textAlign:'center'}}>${r.sisa}</td><td style=${{textAlign:'center', fontWeight:'bold'}}>${r.terjual}</td>
+            </tr>`)}
+          </tbody>
+        </table>
+      </div>
+    `;
   }
 
   return null;
+}
+
+// ============================================================
+// FITUR MANDIRI: PENJUALAN (KASIR) + CETAK STRUK
+// ============================================================
+function Struk({ receipt: r, bizInfo }) {
+  const biz = bizInfo || {};
+  const row = (a, b, bold) => html`<div style=${{ display:'flex', justifyContent:'space-between', fontWeight: bold ? 'bold' : 'normal' }}><span>${a}</span><span>${b}</span></div>`;
+  const wkt = new Date(r.waktu).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' }).replace('.', ':');
+  return html`
+    <div class="print-struk">
+      ${biz.logo && html`<img src=${biz.logo} style=${{ maxHeight:60, maxWidth:'100%', display:'block', margin:'0 auto 8px' }} />`}
+      <h3>${biz.nama || 'TITIP BEKAL'}</h3>
+      <div class="biz-info">${biz.alamat && html`<div>${biz.alamat}</div>`}${biz.telp && html`<div>${biz.telp}</div>`}</div>
+      <div class="dashed-line"></div>
+      ${row('No: #' + pad3(r.no), wkt)}
+      <div>${dateID(r.tanggal, { day:'numeric', month:'short', year:'numeric' })}</div>
+      <div class="dashed-line"></div>
+      ${r.items.map(i => html`<div style=${{ marginBottom:4 }}><div>${i.nama}</div>${row(i.qty + ' x ' + formatRp(i.harga), formatRp(i.qty * i.harga))}</div>`)}
+      <div class="dashed-line"></div>
+      ${row('Total', 'Rp ' + formatRp(r.total), true)}
+      ${row(r.metode === 'tunai' ? 'Tunai' : 'Non-tunai', 'Rp ' + formatRp(r.bayar))}
+      ${r.metode === 'tunai' && row('Kembali', 'Rp ' + formatRp(r.kembali))}
+      <div class="dashed-line"></div>
+      <p style=${{ textAlign:'center', margin:'10px 0 0 0', fontSize:11 }}>Terima Kasih</p>
+      <!-- JARAK POTONG EKSTRA -->
+      <div style=${{ height: '15mm' }}></div>
+    </div>
+  `;
+}
+
+function Kasir({ menus, hargaJual, bizInfo, notify, executePrint }) {
+  const harga = Number(hargaJual) || 0;
+  const today = localDate();
+  const [sales, setSales] = useState(() => LS.get('tb_penjualan', []));
+  const [cart, setCart] = useState({});
+  const [q, setQ] = useState('');
+  const [kat, setKat] = useState('');
+  const [metode, setMetode] = useState('tunai');
+  const [bayar, setBayar] = useState('');
+  const [viewDate, setViewDate] = useState(today);
+
+  const saveSales = (arr) => { setSales(arr); LS.set('tb_penjualan', arr); };
+  const cats = useMemo(() => [...new Set(menus.map(m => m.kategori || 'Lainnya'))], [menus]);
+  const list = menus.filter(m => (!kat || (m.kategori || 'Lainnya') === kat) && m.nama.toLowerCase().includes(q.toLowerCase()));
+  const lines = menus.filter(m => cart[m.id] > 0).map(m => ({ menuId: m.id, nama: m.nama, qty: cart[m.id], harga }));
+  const total = lines.reduce((s, l) => s + l.qty * l.harga, 0);
+  
+  // FIX: Perlindungan agar nilai input bayar tidak bisa jadi minus
+  const bayarNum = metode === 'tunai' ? Math.max(0, (Number(bayar) || 0)) : total;
+  const kembali = bayarNum - total;
+  const canPay = lines.length > 0 && harga > 0 && kembali >= 0;
+  
+  const setQty = (id, n) => setCart(c => { const x = { ...c }; if (n > 0) x[id] = Math.floor(n); else delete x[id]; return x; });
+
+  const viewSales = sales.filter(s => s.tanggal === viewDate);
+  const omzet = viewSales.reduce((s, x) => s + x.total, 0);
+  const viewPcs = viewSales.reduce((s, x) => s + x.items.reduce((a, i) => a + i.qty, 0), 0);
+
+  // FIX: Menggunakan executePrint terpusat dari App, menghilangkan race condition DOM print
+  const cetak = (sale) => {
+    executePrint({ type: 'kasir', receipt: sale });
+  };
+
+  const bayarDanCetak = () => {
+    if (!canPay) return;
+    const todays = sales.filter(s => s.tanggal === today);
+    const sale = { id: 'jual-' + Date.now(), no: Math.max(0, ...todays.map(s => s.no)) + 1, tanggal: today, waktu: new Date().toISOString(), items: lines, total, bayar: bayarNum, kembali, metode };
+    saveSales([sale, ...sales]);
+    setCart({}); setBayar('');
+    cetak(sale);
+    notify('Transaksi tersimpan');
+  };
+  const hapus = (s) => { if (!confirm('Hapus transaksi #' + pad3(s.no) + '?')) return; saveSales(sales.filter(x => x.id !== s.id)); };
+
+  const lbl = { fontSize:11, color:'var(--muted)' };
+  return html`
+    <div class="anim-up" style=${{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div class="card" style=${{ padding:16 }}>
+        <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <h2 style=${{ fontSize:15, fontWeight:700 }}>Ringkasan Penjualan</h2>
+          <input type="date" class="input-field" style=${{ width:'auto', padding:'6px 10px' }} value=${viewDate} onInput=${e => setViewDate(e.target.value || today)} />
+        </div>
+        <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, textAlign:'center' }}>
+          ${[['Omzet', 'Rp ' + formatRp(omzet)], ['Transaksi', viewSales.length], ['Terjual (pcs)', viewPcs]].map(([a, b]) => html`
+            <div style=${{ background:'var(--paper2)', borderRadius:8, padding:'8px 4px' }}><div style=${lbl}>${a}</div><div style=${{ fontSize:15, fontWeight:700 }}>${b}</div></div>`)}
+        </div>
+      </div>
+
+      <div class="card" style=${{ padding:16, display:'flex', flexDirection:'column', gap:10 }}>
+        <h3 style=${{ fontSize:15, fontWeight:700 }}>Pilih Menu <span style=${{ ...lbl, fontWeight:500 }}>• Rp ${formatRp(harga)} / pcs</span></h3>
+        ${harga <= 0 && html`<div style=${{ fontSize:12, color:'var(--expense)' }}>Harga jual belum diatur. Isi di Pengaturan → Harga Jual / Pcs.</div>`}
+        ${menus.length === 0 && html`<div style=${{ fontSize:13, color:'var(--muted)' }}>Belum ada menu. Tambahkan di Master Data.</div>`}
+        <input type="text" class="input-field" placeholder="Cari menu..." value=${q} onInput=${e => setQ(e.target.value)} />
+        <div style=${{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          ${['', ...cats].map(c => html`<button class=${c === kat ? 'btn-primary' : 'btn-ghost'} style=${{ padding:'4px 10px', fontSize:12 }} onClick=${() => setKat(c)}>${c || 'Semua'}</button>`)}
+        </div>
+        <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, maxHeight:300, overflowY:'auto' }}>
+          ${list.map(m => html`
+            <button key=${m.id} class="btn-ghost" style=${{ flexDirection:'column', alignItems:'flex-start', padding:10, background:'var(--paper2)', position:'relative', textAlign:'left' }} onClick=${() => setQty(m.id, (cart[m.id] || 0) + 1)}>
+              <span style=${{ fontSize:13, fontWeight:600, color:'var(--ink)' }}>${m.nama}</span>
+              <span style=${lbl}>${m.kategori || 'Lainnya'}</span>
+              ${cart[m.id] > 0 && html`<span style=${{ position:'absolute', top:6, right:6, background:'var(--accent)', color:'#fff', borderRadius:10, fontSize:11, fontWeight:700, padding:'1px 7px' }}>${cart[m.id]}</span>`}
+            </button>`)}
+        </div>
+      </div>
+
+      <div class="card" style=${{ padding:16, display:'flex', flexDirection:'column', gap:10 }}>
+        <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <h3 style=${{ fontSize:15, fontWeight:700 }}>Keranjang</h3>
+          ${lines.length > 0 && html`<button class="btn-ghost" style=${{ padding:'4px 10px', fontSize:12, color:'var(--expense)' }} onClick=${() => setCart({})}>Kosongkan</button>`}
+        </div>
+        ${lines.length === 0 ? html`<div style=${{ fontSize:13, color:'var(--muted)' }}>Ketuk menu di atas untuk menambah.</div>` : lines.map(l => html`
+          <div key=${l.menuId} style=${{ display:'flex', alignItems:'center', gap:8, borderBottom:'1px solid var(--border)', paddingBottom:8 }}>
+            <div style=${{ flex:1, minWidth:0 }}><div style=${{ fontSize:13, fontWeight:600 }}>${l.nama}</div><div style=${lbl}>Rp ${formatRp(l.harga)}</div></div>
+            <button class="btn-ghost" style=${{ padding:'2px 10px', fontSize:16 }} onClick=${() => setQty(l.menuId, l.qty - 1)}>−</button>
+            <input type="number" min="1" class="input-field" style=${{ width:56, padding:'6px 4px', textAlign:'center' }} value=${l.qty} onInput=${e => setQty(l.menuId, Number(e.target.value))} />
+            <button class="btn-ghost" style=${{ padding:'2px 10px', fontSize:16 }} onClick=${() => setQty(l.menuId, l.qty + 1)}>+</button>
+            <div style=${{ width:70, textAlign:'right', fontSize:13, fontWeight:700 }}>${formatRp(l.qty * l.harga)}</div>
+          </div>`)}
+        <div style=${{ display:'flex', justifyContent:'space-between', fontSize:18, fontWeight:700 }}><span>Total</span><span>Rp ${formatRp(total)}</span></div>
+        <div class="tab-bar" style=${{ width:'100%' }}>
+          <button class=${'tab-btn ' + (metode === 'tunai' ? 'active' : '')} onClick=${() => setMetode('tunai')}>Tunai</button>
+          <button class=${'tab-btn ' + (metode === 'non' ? 'active' : '')} onClick=${() => setMetode('non')}>Non-tunai</button>
+        </div>
+        ${metode === 'tunai' && html`
+          <input type="number" min="0" class="input-field" placeholder="Uang diterima (Rp)" value=${bayar} onInput=${e => setBayar(e.target.value)} />
+          <div style=${{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            <button class="btn-ghost" style=${{ padding:'4px 10px', fontSize:12 }} onClick=${() => setBayar(String(total))}>Uang Pas</button>
+            ${[5000, 10000, 20000, 50000, 100000].map(v => html`<button class="btn-ghost" style=${{ padding:'4px 10px', fontSize:12 }} onClick=${() => setBayar(String(v))}>${formatRp(v)}</button>`)}
+          </div>
+          <div style=${{ display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:600, color: kembali < 0 ? 'var(--expense)' : 'var(--success)' }}>
+            <span>${kembali < 0 ? 'Kurang' : 'Kembalian'}</span><span>Rp ${formatRp(Math.abs(kembali))}</span>
+          </div>`}
+        <button class="btn-primary" disabled=${!canPay} onClick=${bayarDanCetak}><${I.Printer} style=${{ width:16, height:16 }} /> Bayar & Cetak Struk</button>
+      </div>
+
+      <div>
+        <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:10 }}>Riwayat Transaksi (${dateID(viewDate, { day:'numeric', month:'short', year:'numeric' })})</h3>
+        ${viewSales.length === 0 ? html`<div style=${{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:16 }}>Belum ada transaksi.</div>` : html`
+          <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
+            ${viewSales.map(s => html`
+              <div class="card" key=${s.id} style=${{ padding:12, display:'flex', alignItems:'center', gap:8 }}>
+                <div style=${{ flex:1, minWidth:0 }}>
+                  <div style=${{ fontSize:14, fontWeight:600 }}>#${pad3(s.no)} • Rp ${formatRp(s.total)}</div>
+                  <div style=${{ ...lbl, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>${s.items.map(i => i.qty + 'x ' + i.nama).join(', ')}</div>
+                </div>
+                <button class="btn-ghost" style=${{ padding:6, border:'none', color:'var(--info)' }} title="Cetak ulang" onClick=${() => cetak(s)}><${I.Printer} style=${{ width:16, height:16 }} /></button>
+                <button class="btn-ghost" style=${{ padding:6, border:'none', color:'var(--expense)' }} title="Hapus" onClick=${() => hapus(s)}><${I.Trash} style=${{ width:16, height:16 }} /></button>
+              </div>`)}
+          </div>`}
+      </div>
+    </div>
+  `;
 }
 
 function App() {
@@ -344,69 +496,82 @@ function App() {
   const [ambil, setAmbil] = useState(() => LS.get('tb_ambil', []));
   const [syncUrl, setSyncUrl] = useState(() => LS.get('tb_syncUrl', ''));
   
-  const defaultSettings = { bizInfo: { nama: 'TitipBekal', alamat: '', telp: '', sosmed: '', logo: '' }, hargaJual: 2000, komisi: 200 };
-  const [settings, setSettings] = useState(() => LS.get('tb_settings', defaultSettings));
+  const defaultSettings = { 
+    bizInfo: { nama: 'TitipBekal', alamat: '', telp: '', sosmed: '', logo: '' }, 
+    hargaJual: 2000, komisi: 200, 
+    harianBgColor: '#fef3c7', harianTextColor: '#b45309' 
+  };
+  const [settings, setSettings] = useState(() => ({...defaultSettings, ...LS.get('tb_settings', {})}));
   const [kategoriList, setKategoriList] = useState(() => LS.get('tb_kategori', ['Makanan', 'Minuman', 'Kue basah', 'Snack']));
   const [searchTx, setSearchTx] = useState('');
   const [searchMaster, setSearchMaster] = useState('');
+  const [formSet, setFormSet] = useState(settings);
+  const [newCat, setNewCat] = useState('');
+  useEffect(() => { if (activeTab === 'pengaturan') setFormSet(settings); }, [activeTab]);
 
-  const saveState = (key, data, setter) => { setter(data); LS.set(key, data); syncToCloud(); };
-  const syncToCloud = async () => {
-    if(!syncUrl) return;
-    try { await fetch(syncUrl, { method: 'POST', body: JSON.stringify({ suppliers, menus, titip, ambil }) }); } 
-    catch(e) { console.warn('Sync error', e); }
+  const SYNC_MAP = { tb_suppliers: 'suppliers', tb_menus: 'menus', tb_titip: 'titip', tb_ambil: 'ambil' };
+  const saveState = (key, data, setter) => {
+    setter(data); LS.set(key, data);
+    const f = SYNC_MAP[key];
+    if (f) syncToCloud({ suppliers, menus, titip, ambil, [f]: data });
+  };
+  const syncToCloud = async (payload, manual) => {
+    if(!syncUrl) { if(manual) notify('Isi URL sinkronisasi dulu', 'err'); return; }
+    try {
+      await fetch(syncUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload || { suppliers, menus, titip, ambil }) });
+      if(manual) notify('Sinkronisasi terkirim');
+    } catch(e) { console.warn('Sync error', e); if(manual) notify('Sinkronisasi gagal', 'err'); }
   };
 
   const getSupplierName = (id) => { const s = suppliers.find(x => x.id === id); return s ? s.nama : 'Unknown'; };
   const getMenuName = (id) => { const m = menus.find(x => x.id === id); return m ? m.nama : 'Unknown'; };
 
   const [modal, setModal] = useState(null);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDate();
   const [printData, setPrintData] = useState(null);
 
   const executePrint = (data) => {
     setPrintData(data);
-    setTimeout(() => {
-      window.print();
-      setModal(null);
-    }, 500);
+    setTimeout(() => { window.print(); setModal(null); }, 500);
   };
 
   // --- HTML5 QR CODE SCANNER EFFECT ---
   useEffect(() => {
-    let scanner = null;
+    let scanner = null, done = false;
     if (modal === 'scan' && window.Html5QrcodeScanner) {
       setTimeout(() => {
-        scanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: {width: 250, height: 100} }, false);
+        let config = { fps: 10, qrbox: {width: 250, height: 250}, aspectRatio: 1.0 };
+        if (window.Html5QrcodeSupportedFormats) {
+          config.formatsToSupport = [ window.Html5QrcodeSupportedFormats.QR_CODE ];
+        }
+        scanner = new Html5QrcodeScanner("qr-reader", config, false);
         scanner.render((decodedText) => {
-          scanner.clear();
-          setModal(null);
-          // Cari ID Titip
-          const foundTitip = titip.find(t => t.id === decodedText);
+          if (done) return; done = true;
+          scanner.clear().catch(() => {});
+          const foundAmbil = ambil.find(a => a.id === decodedText);
+          const foundTitip = titip.find(t => t.id === (foundAmbil ? foundAmbil.titipId : decodedText));
           if(foundTitip) {
-            openAmbilModal(foundTitip);
+            openAmbilModal(foundTitip, foundAmbil || ambil.find(a => a.titipId === foundTitip.id) || null);
           } else {
+            setModal(null);
             notify("Data Titip tidak ditemukan untuk struk ini", "err");
           }
-        }, (err) => { /* ignore */ });
-      }, 100);
+        }, (err) => { /* ignore logs */ });
+      }, 200);
     }
     return () => { if(scanner) scanner.clear().catch(e=>console.log(e)); }
   }, [modal]);
 
-  // --- MASTER SUPPLIER & MENU ---
-  // (Kode sama persis seperti sebelumnya)
   const [supForm, setSupForm] = useState({ id: '', nama: '', hp: '', alamat: '', bank: '', rekening: '' });
   const openSupplierModal = (sup = null) => { if (sup) setSupForm({ ...sup }); else setSupForm({ id: 'sup-'+Date.now(), nama: '', hp: '', alamat: '', bank: '', rekening: '' }); setModal('supplier'); };
   const saveSupplier = (e) => { e.preventDefault(); if(!supForm.nama.trim()) return notify('Nama wajib diisi', 'err'); let newSups = [...suppliers]; const idx = newSups.findIndex(s => s.id === supForm.id); if (idx >= 0) newSups[idx] = supForm; else newSups.push(supForm); saveState('tb_suppliers', newSups, setSuppliers); setModal(null); notify('Supplier tersimpan'); };
-  const hapusSupplier = (id) => { if(menus.some(m => m.supplierId === id)) return notify('Gagal: Supplier memiliki menu', 'err'); if(!confirm('Hapus supplier ini?')) return; saveState('tb_suppliers', suppliers.filter(s => s.id !== id), setSuppliers); };
+  const hapusSupplier = (id) => { if(menus.some(m => m.supplierId === id)) return notify('Gagal: Supplier memiliki menu', 'err'); if(titip.some(t => t.supplierId === id)) return notify('Gagal: Supplier punya riwayat titipan', 'err'); if(!confirm('Hapus supplier ini?')) return; saveState('tb_suppliers', suppliers.filter(s => s.id !== id), setSuppliers); };
 
   const [menuForm, setMenuForm] = useState({ id: '', supplierId: '', nama: '', kategori: kategoriList[0] || '' });
   const openMenuModal = (menu = null) => { if (menu) setMenuForm({ ...menu }); else setMenuForm({ id: 'menu-'+Date.now(), supplierId: suppliers[0]?.id || '', nama: '', kategori: kategoriList[0] || '' }); setModal('menu'); };
   const saveMenu = (e) => { e.preventDefault(); if(!menuForm.nama.trim() || !menuForm.supplierId) return notify('Lengkapi data menu & pilih supplier', 'err'); let newMenus = [...menus]; const idx = newMenus.findIndex(m => m.id === menuForm.id); if (idx >= 0) newMenus[idx] = menuForm; else newMenus.push(menuForm); saveState('tb_menus', newMenus, setMenus); setModal(null); notify('Menu tersimpan'); };
-  const hapusMenu = (id) => { if(!confirm('Hapus menu ini?')) return; saveState('tb_menus', menus.filter(m => m.id !== id), setMenus); };
+  const hapusMenu = (id) => { if(titip.some(t => t.items.some(i => i.menuId === id))) return notify('Gagal: Menu dipakai di riwayat titipan', 'err'); if(!confirm('Hapus menu ini?')) return; saveState('tb_menus', menus.filter(m => m.id !== id), setMenus); };
 
-  // --- HARIAN ---
   const [harianDate, setHarianDate] = useState(todayStr);
   const [harianSelected, setHarianSelected] = useState({});
   const openHarianModal = () => { setHarianDate(todayStr); setHarianSelected({}); setModal('harian'); };
@@ -419,7 +584,6 @@ function App() {
     executePrint({ type: 'harian', tanggal: harianDate, groupedMenus: grouped });
   };
 
-  // --- TRANSAKSI TITIP ---
   const [titipSup, setTitipSup] = useState('');
   const [titipItems, setTitipItems] = useState({});
   const [editingTitipId, setEditingTitipId] = useState(null);
@@ -437,18 +601,15 @@ function App() {
   
   const saveTitip = () => {
     const items = Object.entries(titipItems).filter(([_, qty]) => Number(qty) > 0).map(([menuId, qty]) => ({ menuId, qty: Number(qty) }));
+    if(!titipSup) return notify('Pilih supplier dulu', 'err');
     if(items.length === 0) return notify('Masukkan jumlah penitipan minimal 1', 'err');
-    
-    // Validasi Ganda (Mencegah Titip berulang di hari yang sama untuk supplier yang sama)
     if (!editingTitipId) {
       const isDuplicate = titip.find(t => t.tanggal === todayStr && t.supplierId === titipSup);
-      if (isDuplicate) {
-        const confirmLanjut = confirm(`Peringatan: Supplier ${getSupplierName(titipSup)} sudah menitip barang hari ini. Apakah ini titipan susulan (kloter kedua)? Klik OK untuk melanjutkan.`);
-        if (!confirmLanjut) return;
-      }
+      if (isDuplicate && !confirm(`Peringatan: Supplier sudah menitip barang hari ini. Lanjutkan (kloter kedua)?`)) return;
     }
-
-    const record = { id: editingTitipId || 'ttp-'+Date.now(), tanggal: todayStr, supplierId: titipSup, items };
+    else if (ambil.some(a => a.titipId === editingTitipId) && !confirm('Titipan ini sudah diproses pengambilan. Mengubah jumlah tidak mengubah data pengambilan. Lanjutkan?')) return;
+    const oldT = titip.find(t => t.id === editingTitipId);
+    const record = { id: editingTitipId || 'ttp-'+Date.now(), tanggal: oldT ? oldT.tanggal : todayStr, supplierId: titipSup, items };
     let newTitip = [...titip];
     if(editingTitipId) { const idx = newTitip.findIndex(t => t.id === editingTitipId); if(idx >= 0) newTitip[idx] = record; } 
     else newTitip.unshift(record);
@@ -456,33 +617,24 @@ function App() {
     executePrint({ type: 'titip', ...record });
   };
 
-  // --- TRANSAKSI AMBIL ---
   const [ambilSup, setAmbilSup] = useState('');
-  const [ambilRefTitipId, setAmbilRefTitipId] = useState(''); // Menyimpan relasi ke ID Titip
+  const [ambilRefTitipId, setAmbilRefTitipId] = useState('');
   const [ambilSisa, setAmbilSisa] = useState({});
   const [editingAmbilId, setEditingAmbilId] = useState(null);
   
-  // Data barang yang mau diambil kini mengacu pada SATU struk titip saja
   const targetTitipForAmbil = useMemo(() => {
     if(!ambilRefTitipId) return [];
     const t = titip.find(x => x.id === ambilRefTitipId);
-    if (!t) return [];
-    return t.items.map(i => ({ menuId: i.menuId, qty: i.qty }));
+    return t ? t.items.map(i => ({ menuId: i.menuId, qty: i.qty })) : [];
   }, [titip, ambilRefTitipId]);
 
-  // Fungsi dipanggil HANYA dari tombol "Proses Ambil" di list titip atau Scanner
   const openAmbilModal = (titipRecord, existingAmbil = null) => {
-    setAmbilSup(titipRecord.supplierId);
-    setAmbilRefTitipId(titipRecord.id);
-    
+    setAmbilSup(titipRecord.supplierId); setAmbilRefTitipId(titipRecord.id);
     if(existingAmbil) {
       setEditingAmbilId(existingAmbil.id);
       const st = {}; existingAmbil.items.forEach(i => { st[i.menuId] = i.sisa; });
       setAmbilSisa(st);
-    } else {
-      setEditingAmbilId(null);
-      setAmbilSisa({});
-    }
+    } else { setEditingAmbilId(null); setAmbilSisa({}); }
     setModal('ambil');
   };
 
@@ -490,24 +642,15 @@ function App() {
     if(targetTitipForAmbil.length === 0) return notify('Tidak ada referensi titipan', 'err');
     const items = targetTitipForAmbil.map(t => {
       const sisa = Number(ambilSisa[t.menuId]) || 0;
-      const terjual = Math.max(0, t.qty - sisa);
-      return { menuId: t.menuId, awal: t.qty, sisa, terjual };
+      return { menuId: t.menuId, awal: t.qty, sisa, terjual: Math.max(0, t.qty - sisa) };
     });
-    
-    // Validasi Ganda Ambil
+    if (targetTitipForAmbil.some(t => (Number(ambilSisa[t.menuId]) || 0) > t.qty || (Number(ambilSisa[t.menuId]) || 0) < 0)) return notify('Sisa tidak valid (melebihi jumlah titip)', 'err');
     if (!editingAmbilId) {
       const isDuplicate = ambil.find(a => a.titipId === ambilRefTitipId);
-      if (isDuplicate) {
-        const confirmLanjut = confirm(`Peringatan: Struk Titip ini sudah pernah diproses Ambil. Yakin ingin membuat nota Ambil baru untuk struk ini?`);
-        if (!confirmLanjut) return;
-      }
+      if (isDuplicate && !confirm(`Struk Titip ini sudah pernah diproses. Yakin ingin buat baru?`)) return;
     }
-
-    const record = { 
-      id: editingAmbilId || 'amb-'+Date.now(), titipId: ambilRefTitipId, tanggal: todayStr, supplierId: ambilSup, 
-      items, hargaJual: settings.hargaJual, komisi: settings.komisi 
-    };
-    
+    const oldA = ambil.find(a => a.id === editingAmbilId);
+    const record = { id: editingAmbilId || 'amb-'+Date.now(), titipId: ambilRefTitipId, tanggal: oldA ? oldA.tanggal : todayStr, supplierId: ambilSup, items, hargaJual: oldA ? oldA.hargaJual : settings.hargaJual, komisi: oldA ? oldA.komisi : settings.komisi };
     let newAmbil = [...ambil];
     if(editingAmbilId) { const idx = newAmbil.findIndex(a => a.id === editingAmbilId); if(idx >= 0) newAmbil[idx] = record; } 
     else newAmbil.unshift(record);
@@ -515,40 +658,26 @@ function App() {
     executePrint({ type: 'ambil', ...record });
   };
 
-  // --- REKAP HARIAN LOGIC ---
   const titipTodayList = useMemo(() => titip.filter(t => t.tanggal === todayStr), [titip, todayStr]);
   const ambilTodayList = useMemo(() => ambil.filter(a => a.tanggal === todayStr), [ambil, todayStr]);
-  
-  const isAllAmbilDone = useMemo(() => {
-    const supsTitip = [...new Set(titipTodayList.map(t => t.supplierId))];
-    const supsAmbil = [...new Set(ambilTodayList.map(a => a.supplierId))];
-    return supsTitip.length > 0 && supsTitip.every(id => supsAmbil.includes(id));
-  }, [titipTodayList, ambilTodayList]);
+  const isAllAmbilDone = useMemo(() => titipTodayList.length > 0 && titipTodayList.every(t => ambil.some(a => a.titipId === t.id)), [titipTodayList, ambil]);
 
   const cetakRekapHarian = () => {
     const rekap = [];
-    ambilTodayList.forEach(a => {
-      a.items.forEach(i => { rekap.push({ supplierId: a.supplierId, menuId: i.menuId, awal: i.awal, sisa: i.sisa, terjual: i.terjual }); });
-    });
+    ambilTodayList.forEach(a => a.items.forEach(i => rekap.push({ supplierId: a.supplierId, menuId: i.menuId, awal: i.awal, sisa: i.sisa, terjual: i.terjual })));
     executePrint({ type: 'rekap', tanggal: todayStr, rekapList: rekap });
   };
 
-
-  // --- RENDER CONTENT ---
   const renderContent = () => {
     if (activeTab === 'transaksi') {
       let totalLaku = 0;
-      ambilTodayList.forEach(a => a.items.forEach(i => { totalLaku += i.terjual; }));
-
-      // Mencari Titipan yang belum diambil hari ini
+      ambilTodayList.forEach(a => a.items.forEach(i => totalLaku += i.terjual));
       const combinedActs = titip.map(t => {
         const correspondingAmbil = ambil.find(a => a.titipId === t.id);
         return { ...t, _type: 'Titip', isDone: !!correspondingAmbil, relatedAmbil: correspondingAmbil };
-      }).sort((a,b) => b.id.localeCompare(a.id));
-
+      }).sort((a,b) => b.id.localeCompare(a.id, undefined, { numeric: true }));
       const filteredActs = searchTx ? combinedActs.filter(act => 
-        getSupplierName(act.supplierId).toLowerCase().includes(searchTx.toLowerCase()) || 
-        act.tanggal.includes(searchTx) || act.id.includes(searchTx)
+        getSupplierName(act.supplierId).toLowerCase().includes(searchTx.toLowerCase()) || act.id.includes(searchTx)
       ) : combinedActs.slice(0, 15);
 
       return html`
@@ -556,17 +685,13 @@ function App() {
           <div class="card" style=${{ padding:20, marginBottom:20, background: dark ? 'var(--card)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: dark?'inherit':'#fff' }}>
             <h2 style=${{ fontSize:16, fontWeight:700, marginBottom:16 }}>Ringkasan Penjualan</h2>
             <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-              <div>
-                <div style=${{ fontSize:12, opacity:0.9 }}>Total Terjual (Pcs)</div>
-                <div style=${{ fontSize:28, fontWeight:700 }}>${totalLaku}</div>
-              </div>
+              <div><div style=${{ fontSize:12, opacity:0.9 }}>Total Terjual (Pcs)</div><div style=${{ fontSize:28, fontWeight:700 }}>${totalLaku}</div></div>
               <div style=${{ display:'flex', flexDirection:'column', gap:8, borderLeft: dark ? '1px solid var(--border)' : '1px solid rgba(255,255,255,0.3)', paddingLeft:16 }}>
                 <div style=${{ fontSize:12 }}><b style=${{fontSize:16}}>${titipTodayList.length}</b> Titipan Hari ini</div>
                 <div style=${{ fontSize:12 }}><b style=${{fontSize:16}}>${ambilTodayList.length}</b> Pengambilan Selesai</div>
               </div>
             </div>
           </div>
-
           <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
             <button class="btn-primary" style=${{ height:60, flexDirection:'column', gap:2 }} onClick=${()=>openTitipModal()}>
               <${I.Inbox} style=${{width:20,height:20}} /> Buat Titipan Baru
@@ -575,33 +700,19 @@ function App() {
               <${I.Scan} style=${{width:20,height:20}} /> Scan Struk Ambil
             </button>
           </div>
-          
           <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24 }}>
-            <button class="btn-ghost" style=${{ height:50, background:'var(--card)' }} onClick=${openHarianModal}>
-              <${I.Calendar} style=${{width:16,height:16}} /> Menu Harian
-            </button>
-            <button class="btn-ghost" style=${{ height:50, background:'var(--card)', color: isAllAmbilDone?'var(--ink)':'var(--muted)' }} 
-              disabled=${!isAllAmbilDone} onClick=${cetakRekapHarian} title="Aktif jika semua titipan sudah diambil">
-              <${I.Printer} style=${{width:16,height:16}} /> Rekap Harian
-            </button>
-          </div>
-          
-          <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-            <h3 style=${{ fontSize:14, fontWeight:700, color:'var(--muted)' }}>Daftar Transaksi Titipan</h3>
+            <button class="btn-ghost" style=${{ height:50, background:'var(--card)' }} onClick=${openHarianModal}><${I.Calendar} style=${{width:16,height:16}} /> Menu Harian</button>
+            <button class="btn-ghost" style=${{ height:50, background:'var(--card)', color: isAllAmbilDone?'var(--ink)':'var(--muted)' }} disabled=${!isAllAmbilDone} onClick=${cetakRekapHarian}><${I.Printer} style=${{width:16,height:16}} /> Rekap Harian</button>
           </div>
           <div style=${{ position:'relative', marginBottom:12 }}>
             <${I.Search} style=${{ width:16, height:16, position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--muted)' }} />
-            <input type="text" class="input-field" style=${{ paddingLeft:36, height:38 }} placeholder="Cari nama atau barcode ID..." 
-              value=${searchTx} onInput=${e => setSearchTx(e.target.value)} />
+            <input type="text" class="input-field" style=${{ paddingLeft:36, height:38 }} placeholder="Cari nama atau barcode ID..." value=${searchTx} onInput=${e => setSearchTx(e.target.value)} />
           </div>
-
           <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
             ${filteredActs.length === 0 ? html`<div style=${{fontSize:13, color:'var(--muted)', textAlign:'center', padding:20}}>Tidak ditemukan.</div>` : filteredActs.map(act => html`
               <div class="card" style=${{ padding:12, display:'flex', flexDirection:'column', gap:12 }} key=${act.id}>
                 <div style=${{ display:'flex', alignItems:'center', gap:12 }}>
-                  <div style=${{ width:36, height:36, borderRadius:8, background:'var(--paper2)', display:'flex', alignItems:'center', justifyContent:'center', color: 'var(--accent)' }}>
-                    <${I.Inbox} style=${{width:18,height:18}}/>
-                  </div>
+                  <div style=${{ width:36, height:36, borderRadius:8, background:'var(--paper2)', display:'flex', alignItems:'center', justifyContent:'center', color: 'var(--accent)' }}><${I.Inbox} style=${{width:18,height:18}}/></div>
                   <div style=${{ flex:1 }}>
                     <div style=${{ fontSize:14, fontWeight:600 }}>${getSupplierName(act.supplierId)}</div>
                     <div style=${{ fontSize:11, color:'var(--muted)' }}>ID: ${act.id} • ${act.tanggal}</div>
@@ -611,15 +722,12 @@ function App() {
                     <button class="btn-ghost" style=${{ padding:6, border:'none', color:'var(--info)' }} onClick=${() => executePrint({ type: 'titip', ...act })}><${I.Printer} style=${{width:16,height:16}}/></button>
                   </div>
                 </div>
-                
                 <div style=${{ borderTop: '1px dashed var(--border)', paddingTop: 10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <div style=${{ fontSize: 12, fontWeight: 600, color: act.isDone ? 'var(--success)' : 'var(--expense)' }}>
                     ${act.isDone ? 'Status: Selesai Diambil' : 'Status: Belum Diambil'}
                   </div>
                   ${!act.isDone ? html`
-                    <button class="btn-primary" style=${{ padding:'6px 12px', fontSize:12, background:'var(--ink)', borderColor:'var(--ink)' }} onClick=${() => openAmbilModal(act)}>
-                      Proses Ambil
-                    </button>
+                    <button class="btn-primary" style=${{ padding:'6px 12px', fontSize:12, background:'var(--ink)', borderColor:'var(--ink)' }} onClick=${() => openAmbilModal(act)}>Proses Ambil</button>
                   ` : html`
                     <div style=${{ display:'flex', gap:6 }}>
                       <button class="btn-ghost" style=${{ padding:'4px 8px', fontSize:11 }} onClick=${() => openAmbilModal(act, act.relatedAmbil)}>Edit Ambil</button>
@@ -634,35 +742,35 @@ function App() {
       `;
     }
 
+    // FIX: Mengirim executePrint ke Kasir agar dirender melaui portal utama App
+    if (activeTab === 'penjualan') return html`<${Kasir} menus=${menus} hargaJual=${settings.hargaJual} bizInfo=${settings.bizInfo} notify=${notify} executePrint=${executePrint} />`;
+
     if (activeTab === 'master') {
-      // (Render Master persis sama, saya potong demi menghemat baris tanpa mengurangi fitur)
       const filteredSups = suppliers.filter(s => s.nama.toLowerCase().includes(searchMaster.toLowerCase()));
       const filteredMenus = menus.filter(m => m.nama.toLowerCase().includes(searchMaster.toLowerCase()) || getSupplierName(m.supplierId).toLowerCase().includes(searchMaster.toLowerCase()));
-
       return html`
         <div class="anim-up" style=${{ display:'flex', flexDirection:'column', gap:24 }}>
           <div style=${{ position:'relative' }}>
             <${I.Search} style=${{ width:16, height:16, position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--muted)' }} />
-            <input type="text" class="input-field" style=${{ paddingLeft:36, height:38 }} placeholder="Cari supplier atau menu..." 
-              value=${searchMaster} onInput=${e => setSearchMaster(e.target.value)} />
+            <input type="text" class="input-field" style=${{ paddingLeft:36, height:38 }} placeholder="Cari supplier atau menu..." value=${searchMaster} onInput=${e => setSearchMaster(e.target.value)} />
           </div>
-
           <div>
             <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
               <h3 style=${{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}><${I.Users} style=${{width:16,height:16}}/> Data Supplier</h3>
               <button class="btn-ghost" style=${{ padding:'6px 12px', fontSize:12 }} onClick=${()=>openSupplierModal()}><${I.Plus} style=${{width:14,height:14}}/> Tambah</button>
             </div>
-            ${filteredSups.length === 0 ? html`<div style=${{fontSize:13, color:'var(--muted)'}}>Supplier tidak ditemukan.</div>` : html`
+            ${filteredSups.length === 0 ? html`<div style=${{fontSize:13, color:'var(--muted)'}}>Tidak ditemukan.</div>` : html`
               <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
                 ${filteredSups.map(s => html`
                   <div class="card" style=${{ padding:12, display:'flex', flexDirection:'column', gap:8 }} key=${s.id}>
                     <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                      <div>
+                      <div style=${{ flex:1, paddingRight:8 }}>
                         <div style=${{ fontSize:14, fontWeight:600 }}>${s.nama}</div>
-                        <div style=${{ fontSize:12, color:'var(--muted)' }}>${s.hp || '-'} | ${s.bank ? `${s.bank} - ${s.rekening}` : 'No Rek: -'}</div>
+                        <div style=${{ fontSize:12, color:'var(--muted)', marginTop:2 }}>${s.alamat || '-'} | ${s.hp || '-'} | Bank: ${s.bank || '-'}</div>
                       </div>
                       <div style=${{ display:'flex', gap:4 }}>
-                        ${s.hp && html`<a href="https://wa.me/${formatWA(s.hp)}" target="_blank" class="btn-ghost" style=${{ padding:6, border:'none', color:'var(--success)' }}><${I.MessageCircle} style=${{width:16,height:16}}/></a>`}
+                        ${s.rekening && html`<button class="btn-ghost" style=${{ padding:6, border:'none', color:'var(--info)' }} title="Salin Rekening" onClick=${() => { navigator.clipboard.writeText(s.rekening).then(()=>notify('Rekening disalin')); }}><${I.Copy} style=${{width:16,height:16}}/></button>`}
+                        ${s.hp && html`<a href="https://wa.me/${formatWA(s.hp)}" target="_blank" class="btn-ghost" style=${{ padding:6, border:'none', color:'var(--success)' }} title="WhatsApp"><${I.MessageCircle} style=${{width:16,height:16}}/></a>`}
                         <button class="btn-ghost" style=${{ padding:6, border:'none' }} onClick=${()=>openSupplierModal(s)}><${I.Edit} style=${{width:16,height:16}}/></button>
                         <button class="btn-ghost" style=${{ padding:6, border:'none', color:'var(--expense)' }} onClick=${()=>hapusSupplier(s.id)}><${I.Trash} style=${{width:16,height:16}}/></button>
                       </div>
@@ -672,13 +780,12 @@ function App() {
               </div>
             `}
           </div>
-
           <div>
             <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
               <h3 style=${{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}><${I.Coffee} style=${{width:16,height:16}}/> Data Menu</h3>
               <button class="btn-ghost" style=${{ padding:'6px 12px', fontSize:12 }} onClick=${()=>openMenuModal()}><${I.Plus} style=${{width:14,height:14}}/> Tambah</button>
             </div>
-            ${filteredMenus.length === 0 ? html`<div style=${{fontSize:13, color:'var(--muted)'}}>Menu tidak ditemukan.</div>` : html`
+            ${filteredMenus.length === 0 ? html`<div style=${{fontSize:13, color:'var(--muted)'}}>Tidak ditemukan.</div>` : html`
               <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
                 ${filteredMenus.map(m => html`
                   <div class="card list-row" style=${{padding:12, display:'flex', justifyContent:'space-between'}} key=${m.id}>
@@ -700,14 +807,10 @@ function App() {
     }
 
     if (activeTab === 'pengaturan') {
-      // (Render Pengaturan persis sama, dipotong demi efisiensi)
-      const [formSet, setFormSet] = useState(settings);
-      const [newCat, setNewCat] = useState('');
-
-      const simpanPengaturan = (e) => { e.preventDefault(); saveState('tb_settings', formSet, setSettings); notify('Pengaturan Berhasil Disimpan'); };
-      const handleLogoUpload = (e) => { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = (ev) => { setFormSet({...formSet, bizInfo: {...formSet.bizInfo, logo: ev.target.result}}); }; reader.readAsDataURL(file); };
-      const addKategori = () => { if(!newCat.trim()) return; if(kategoriList.includes(newCat)) return notify('Kategori sudah ada', 'err'); const newArr = [...kategoriList, newCat]; setKategoriList(newArr); LS.set('tb_kategori', newArr); setNewCat(''); notify('Kategori ditambah'); };
-      const hapusKategori = (kat) => { if(menus.some(m => m.kategori === kat)) return notify('Gagal: Kategori digunakan pada menu', 'err'); const newArr = kategoriList.filter(k => k !== kat); setKategoriList(newArr); LS.set('tb_kategori', newArr); };
+      const simpanPengaturan = (e) => { e.preventDefault(); saveState('tb_settings', formSet, setSettings); notify('Pengaturan Disimpan'); };
+      const handleLogoUpload = (e) => { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = (ev) => setFormSet({...formSet, bizInfo: {...formSet.bizInfo, logo: ev.target.result}}); reader.readAsDataURL(file); };
+      const addKategori = () => { const nm = newCat.trim(); if(!nm) return; if(kategoriList.includes(nm)) return notify('Kategori sudah ada', 'err'); const newArr = [...kategoriList, nm]; setKategoriList(newArr); LS.set('tb_kategori', newArr); setNewCat(''); notify('Kategori ditambah'); };
+      const hapusKategori = (kat) => { if(menus.some(m => m.kategori === kat)) return notify('Kategori digunakan pada menu', 'err'); const newArr = kategoriList.filter(k => k !== kat); setKategoriList(newArr); LS.set('tb_kategori', newArr); };
 
       return html`
         <div class="anim-up card" style=${{ padding:20, display:'flex', flexDirection:'column', gap:24 }}>
@@ -715,25 +818,35 @@ function App() {
             <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:16 }}>Profil Usaha (Kop Struk)</h3>
             <div style=${{ display:'flex', flexDirection:'column', gap:12, marginBottom:20 }}>
               <div>
-                <label style=${{fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:4, display:'block'}}>Logo Usaha (Pilih gambar dari HP)</label>
+                <label style=${{fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:4, display:'block'}}>Logo Usaha</label>
                 <div style=${{display:'flex', gap:10, alignItems:'center'}}>
                   ${formSet.bizInfo.logo && html`<img src=${formSet.bizInfo.logo} style=${{height:40, width:40, objectFit:'contain', borderRadius:4, border:'1px solid var(--border)'}} />`}
                   <input type="file" accept="image/*" class="input-field" onChange=${handleLogoUpload} style=${{flex:1, padding:6}} />
                   ${formSet.bizInfo.logo && html`<button type="button" class="btn-ghost" style=${{color:'var(--expense)', padding:6}} onClick=${()=>setFormSet({...formSet, bizInfo: {...formSet.bizInfo, logo:''}})}><${I.Trash} style=${{width:16,height:16}}/></button>`}
                 </div>
               </div>
-              <input type="text" class="input-field" placeholder="Nama Usaha (Bawaan: TITIP BEKAL)" value=${formSet.bizInfo.nama} onInput=${e => setFormSet({...formSet, bizInfo: {...formSet.bizInfo, nama: e.target.value}})} />
+              <input type="text" class="input-field" placeholder="Nama Usaha" value=${formSet.bizInfo.nama} onInput=${e => setFormSet({...formSet, bizInfo: {...formSet.bizInfo, nama: e.target.value}})} />
               <textarea class="input-field" placeholder="Alamat" rows="2" value=${formSet.bizInfo.alamat} onInput=${e => setFormSet({...formSet, bizInfo: {...formSet.bizInfo, alamat: e.target.value}})} />
               <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                 <input type="text" class="input-field" placeholder="No. Telpon" value=${formSet.bizInfo.telp} onInput=${e => setFormSet({...formSet, bizInfo: {...formSet.bizInfo, telp: e.target.value}})} />
                 <input type="text" class="input-field" placeholder="Sosmed (IG/FB)" value=${formSet.bizInfo.sosmed} onInput=${e => setFormSet({...formSet, bizInfo: {...formSet.bizInfo, sosmed: e.target.value}})} />
               </div>
             </div>
-            <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:16 }}>Harga & Komisi Lapak (Global)</h3>
-            <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+
+            <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:16 }}>Harga & Komisi (Global)</h3>
+            <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
               <div><label style=${{fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:4, display:'block'}}>Harga Jual / Pcs (Rp)</label><input type="number" class="input-field" value=${formSet.hargaJual} onInput=${e => setFormSet({...formSet, hargaJual: Number(e.target.value)})} /></div>
-              <div><label style=${{fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:4, display:'block'}}>Komisi Lapak / Pcs (Rp)</label><input type="number" class="input-field" value=${formSet.komisi} onInput=${e => setFormSet({...formSet, komisi: Number(e.target.value)})} /></div>
+              <div><label style=${{fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:4, display:'block'}}>Komisi Lapak (Rp)</label><input type="number" class="input-field" value=${formSet.komisi} onInput=${e => setFormSet({...formSet, komisi: Number(e.target.value)})} /></div>
             </div>
+
+            <div style=${{ borderTop: '1px solid var(--border)', paddingTop: 20, marginBottom:20 }}>
+              <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:12 }}>Format Cetak Menu Harian</h3>
+              <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div><label style=${{fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:4, display:'block'}}>Warna Latar Belakang</label><input type="color" class="input-field" style=${{height:44, padding:4}} value=${formSet.harianBgColor} onInput=${e => setFormSet({...formSet, harianBgColor: e.target.value})} /></div>
+                <div><label style=${{fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:4, display:'block'}}>Warna Teks & Garis</label><input type="color" class="input-field" style=${{height:44, padding:4}} value=${formSet.harianTextColor} onInput=${e => setFormSet({...formSet, harianTextColor: e.target.value})} /></div>
+              </div>
+            </div>
+
             <button type="submit" class="btn-primary" style=${{width:'100%', justifyContent:'center'}}>Simpan Pengaturan</button>
           </form>
 
@@ -742,19 +855,13 @@ function App() {
             <div style=${{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
               ${kategoriList.map(kat => html`<div style=${{display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)'}} key=${kat}><span style=${{fontSize:13, fontWeight:600}}>${kat}</span><button class="btn-ghost" style=${{ padding:4, border:'none', color:'var(--expense)' }} onClick=${()=>hapusKategori(kat)}><${I.Trash} style=${{width:16,height:16}}/></button></div>`)}
             </div>
-            <div style=${{ display:'flex', gap:8 }}>
-              <input type="text" class="input-field" placeholder="Nama Kategori Baru" value=${newCat} onInput=${e => setNewCat(e.target.value)} />
-              <button class="btn-primary" onClick=${addKategori}>Tambah</button>
-            </div>
+            <div style=${{ display:'flex', gap:8 }}><input type="text" class="input-field" placeholder="Nama Kategori Baru" value=${newCat} onInput=${e => setNewCat(e.target.value)} /><button class="btn-primary" onClick=${addKategori}>Tambah</button></div>
           </div>
+          
           <div style=${{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
             <h3 style=${{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:6, marginBottom:16 }}><${I.Cloud} style=${{width:18,height:18}}/> Cloud Sinkronisasi</h3>
             <input type="url" class="input-field" placeholder="https://script.google.com/macros/s/..." value=${syncUrl} onInput=${e => { setSyncUrl(e.target.value); LS.set('tb_syncUrl', e.target.value); }} style=${{ marginBottom:12 }} />
-            <button class="btn-ghost" onClick=${syncToCloud}>Uji Sinkronisasi Sekarang</button>
-            <details style=${{ marginTop:20, background:'var(--paper2)', padding:12, borderRadius:8 }}>
-              <summary style=${{ fontSize:13, fontWeight:600, cursor:'pointer' }}>Lihat Kode GAS Template</summary>
-              <pre style=${{ background:'#000', color:'#4ade80', padding:10, borderRadius:6, fontSize:10, marginTop:10, overflowX:'auto' }}>${GAS_TEMPLATE}</pre>
-            </details>
+            <button class="btn-ghost" onClick=${() => syncToCloud(null, true)}>Uji Sinkronisasi Sekarang</button>
           </div>
         </div>
       `;
@@ -763,7 +870,6 @@ function App() {
 
   return html`
     <div>
-      <!-- MAIN APP ROOT -->
       <div class="no-print" style=${{ minHeight:'100vh', display:'flex', flexDirection:'column' }}>
         <header style=${{ background:'var(--card)', borderBottom:'1px solid var(--border)', position:'sticky', top:0, zIndex:30, padding:'12px 20px' }}>
           <div style=${{ maxWidth:600, margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -771,15 +877,14 @@ function App() {
               <div style=${{background:'var(--accent)', color:'#fff', width:28, height:28, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center'}}>T</div>
               TitipBekal
             </h1>
-            <button onClick=${() => setDark(!dark)} class="btn-ghost" style=${{padding:8, border:'none'}}>
-              ${dark ? html`<${I.Sun} style=${{width:18,height:18}} />` : html`<${I.Moon} style=${{width:18,height:18}} />`}
-            </button>
+            <button onClick=${() => setDark(!dark)} class="btn-ghost" style=${{padding:8, border:'none'}}>${dark ? html`<${I.Sun} style=${{width:18,height:18}} />` : html`<${I.Moon} style=${{width:18,height:18}} />`}</button>
           </div>
         </header>
 
         <main style=${{ flex:1, maxWidth:600, margin:'0 auto', width:'100%', padding:'20px' }}>
           <div class="tab-bar" style=${{ marginBottom:20, width:'100%', display:'flex' }}>
             <button class=${`tab-btn ${activeTab === 'transaksi' ? 'active' : ''}`} onClick=${() => setActiveTab('transaksi')}>Transaksi</button>
+            <button class=${`tab-btn ${activeTab === 'penjualan' ? 'active' : ''}`} onClick=${() => setActiveTab('penjualan')}>Penjualan</button>
             <button class=${`tab-btn ${activeTab === 'master' ? 'active' : ''}`} onClick=${() => setActiveTab('master')}>Master Data</button>
             <button class=${`tab-btn ${activeTab === 'pengaturan' ? 'active' : ''}`} onClick=${() => setActiveTab('pengaturan')}><${I.Settings} style=${{width:16,height:16}}/></button>
           </div>
@@ -790,17 +895,11 @@ function App() {
         ${modal === 'supplier' && html`
           <div class="modal-overlay anim-in" onClick=${e => e.target === e.currentTarget && setModal(null)}>
             <div class="modal-box anim-up">
-              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3 style=${{ fontSize:16, fontWeight:700 }}>${supForm.id.startsWith('sup-') && !suppliers.find(s=>s.id===supForm.id) ? 'Tambah' : 'Edit'} Supplier</h3>
-                <button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button>
-              </div>
+              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}><h3 style=${{ fontSize:16, fontWeight:700 }}>${supForm.id.startsWith('sup-') && !suppliers.find(s=>s.id===supForm.id) ? 'Tambah' : 'Edit'} Supplier</h3><button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button></div>
               <form onSubmit=${saveSupplier} style=${{ padding:20, display:'flex', flexDirection:'column', gap:12 }}>
                 <input type="text" class="input-field" placeholder="Nama Supplier" required value=${supForm.nama} onInput=${e => setSupForm(f=>({...f, nama:e.target.value}))} />
                 <input type="text" class="input-field" placeholder="No HP/WA (Mulai dengan 08 / 628)" value=${supForm.hp} onInput=${e => setSupForm(f=>({...f, hp:e.target.value}))} />
-                <div style=${{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12 }}>
-                  <input type="text" class="input-field" placeholder="Nama Bank" value=${supForm.bank} onInput=${e => setSupForm(f=>({...f, bank:e.target.value}))} />
-                  <input type="text" class="input-field" placeholder="No. Rekening" value=${supForm.rekening} onInput=${e => setSupForm(f=>({...f, rekening:e.target.value}))} />
-                </div>
+                <div style=${{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12 }}><input type="text" class="input-field" placeholder="Nama Bank" value=${supForm.bank} onInput=${e => setSupForm(f=>({...f, bank:e.target.value}))} /><input type="text" class="input-field" placeholder="No. Rekening" value=${supForm.rekening} onInput=${e => setSupForm(f=>({...f, rekening:e.target.value}))} /></div>
                 <textarea class="input-field" placeholder="Alamat (opsional)" rows="2" value=${supForm.alamat} onInput=${e => setSupForm(f=>({...f, alamat:e.target.value}))} />
                 <button type="submit" class="btn-primary" style=${{ marginTop:8 }}>Simpan</button>
               </form>
@@ -811,19 +910,14 @@ function App() {
         ${modal === 'menu' && html`
           <div class="modal-overlay anim-in" onClick=${e => e.target === e.currentTarget && setModal(null)}>
             <div class="modal-box anim-up">
-              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3 style=${{ fontSize:16, fontWeight:700 }}>${menuForm.id.startsWith('menu-') && !menus.find(m=>m.id===menuForm.id) ? 'Tambah' : 'Edit'} Menu</h3>
-                <button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button>
-              </div>
+              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}><h3 style=${{ fontSize:16, fontWeight:700 }}>${menuForm.id.startsWith('menu-') && !menus.find(m=>m.id===menuForm.id) ? 'Tambah' : 'Edit'} Menu</h3><button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button></div>
               <form onSubmit=${saveMenu} style=${{ padding:20, display:'flex', flexDirection:'column', gap:12 }}>
                 <select class="input-field" required value=${menuForm.supplierId} onChange=${e => setMenuForm(f=>({...f, supplierId:e.target.value}))}>
-                  <option value="" disabled>Pilih Supplier...</option>
-                  ${suppliers.map(s => html`<option value=${s.id}>${s.nama}</option>`)}
+                  <option value="" disabled>Pilih Supplier...</option>${suppliers.map(s => html`<option value=${s.id}>${s.nama}</option>`)}
                 </select>
                 <input type="text" class="input-field" placeholder="Nama Menu" required value=${menuForm.nama} onInput=${e => setMenuForm(f=>({...f, nama:e.target.value}))} />
                 <select class="input-field" required value=${menuForm.kategori} onChange=${e => setMenuForm(f=>({...f, kategori:e.target.value}))}>
-                  <option value="" disabled>Pilih Kategori...</option>
-                  ${kategoriList.map(k => html`<option value=${k}>${k}</option>`)}
+                  <option value="" disabled>Pilih Kategori...</option>${kategoriList.map(k => html`<option value=${k}>${k}</option>`)}
                 </select>
                 <button type="submit" class="btn-primary" style=${{ marginTop:8 }}>Simpan</button>
               </form>
@@ -834,14 +928,10 @@ function App() {
         ${modal === 'titip' && html`
           <div class="modal-overlay anim-in" onClick=${e => e.target === e.currentTarget && setModal(null)}>
             <div class="modal-box anim-up">
-              <div style=${{ padding:'16px 20px', background:'var(--accent)', color:'#fff', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3 style=${{ fontSize:16, fontWeight:700 }}>${editingTitipId ? 'Edit Titipan' : 'Catat Titipan Baru'}</h3>
-                <button class="btn-ghost" style=${{ padding:'4px', border:'none', color:'#fff' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button>
-              </div>
+              <div style=${{ padding:'16px 20px', background:'var(--accent)', color:'#fff', display:'flex', justifyContent:'space-between', alignItems:'center' }}><h3 style=${{ fontSize:16, fontWeight:700 }}>${editingTitipId ? 'Edit Titipan' : 'Catat Titipan Baru'}</h3><button class="btn-ghost" style=${{ padding:'4px', border:'none', color:'#fff' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button></div>
               <div style=${{ padding:20, display:'flex', flexDirection:'column', gap:16 }}>
                 <select class="input-field" value=${titipSup} disabled=${!!editingTitipId} onChange=${e => { setTitipSup(e.target.value); setTitipItems({}); }}>
-                  <option value="" disabled>1. Pilih Supplier</option>
-                  ${suppliers.map(s => html`<option value=${s.id}>${s.nama}</option>`)}
+                  <option value="" disabled>1. Pilih Supplier</option>${suppliers.map(s => html`<option value=${s.id}>${s.nama}</option>`)}
                 </select>
                 ${titipSup && html`
                   <div style=${{ background:'var(--paper2)', padding:12, borderRadius:8, border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:8, maxHeight:'40vh', overflowY:'auto' }}>
@@ -849,12 +939,11 @@ function App() {
                     ${menus.filter(m => m.supplierId === titipSup).map(m => html`
                       <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
                         <span style=${{ fontSize:14, flex:1 }}>${m.nama}</span>
-                        <input type="number" class="input-field" style=${{ width:80, padding:'6px 10px', textAlign:'center' }} placeholder="0" min="0" 
-                          value=${titipItems[m.id]||''} onInput=${e => setTitipItems({...titipItems, [m.id]: e.target.value})} />
+                        <input type="number" class="input-field" style=${{ width:80, padding:'6px 10px', textAlign:'center' }} placeholder="0" min="0" value=${titipItems[m.id]||''} onInput=${e => setTitipItems({...titipItems, [m.id]: e.target.value})} />
                       </div>
                     `)}
                   </div>
-                  <button class="btn-primary" onClick=${saveTitip}><${I.Printer} style=${{width:16,height:16}}/> Simpan & Cetak Struk Barcode</button>
+                  <button class="btn-primary" onClick=${saveTitip}><${I.Printer} style=${{width:16,height:16}}/> Simpan & Cetak Struk QR Code</button>
                 `}
               </div>
             </div>
@@ -864,20 +953,12 @@ function App() {
         ${modal === 'ambil' && html`
           <div class="modal-overlay anim-in" onClick=${e => e.target === e.currentTarget && setModal(null)}>
             <div class="modal-box anim-up">
-              <div style=${{ padding:'16px 20px', background:'var(--ink)', color:'#fff', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3 style=${{ fontSize:16, fontWeight:700 }}>${editingAmbilId ? 'Edit Pengambilan' : 'Proses Ambil (Rekap Laku)'}</h3>
-                <button class="btn-ghost" style=${{ padding:'4px', border:'none', color:'#fff' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button>
-              </div>
+              <div style=${{ padding:'16px 20px', background:'var(--ink)', color:'#fff', display:'flex', justifyContent:'space-between', alignItems:'center' }}><h3 style=${{ fontSize:16, fontWeight:700 }}>${editingAmbilId ? 'Edit Pengambilan' : 'Proses Ambil (Rekap Laku)'}</h3><button class="btn-ghost" style=${{ padding:'4px', border:'none', color:'#fff' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button></div>
               <div style=${{ padding:20, display:'flex', flexDirection:'column', gap:16 }}>
-                
-                <div style=${{ padding:12, background:'var(--paper2)', borderRadius:8, fontSize:13 }}>
-                  <div><b>Supplier:</b> ${getSupplierName(ambilSup)}</div>
-                  <div style=${{color:'var(--muted)', fontSize:11}}>ID Referensi: ${ambilRefTitipId}</div>
-                </div>
-
+                <div style=${{ padding:12, background:'var(--paper2)', borderRadius:8, fontSize:13 }}><div><b>Supplier:</b> ${getSupplierName(ambilSup)}</div><div style=${{color:'var(--muted)', fontSize:11}}>ID Referensi: ${ambilRefTitipId}</div></div>
                 <div style=${{ background:'var(--paper2)', padding:12, borderRadius:8, border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:8, maxHeight:'40vh', overflowY:'auto' }}>
                   <div style=${{ display:'grid', gridTemplateColumns:'1fr 40px 60px 40px', gap:8, fontSize:11, fontWeight:700, color:'var(--muted)', marginBottom:4, textAlign:'center' }}>
-                    <div style=${{textAlign:'left'}}>Nama Menu</div><div>Ttp</div><div>Sisa(Input)</div><div>Laku</div>
+                    <div style=${{textAlign:'left'}}>Nama Menu</div><div>Ttp</div><div>Sisa</div><div>Laku</div>
                   </div>
                   ${targetTitipForAmbil.map(t => {
                     const sisa = Number(ambilSisa[t.menuId]) || 0;
@@ -886,16 +967,11 @@ function App() {
                       <div style=${{ display:'grid', gridTemplateColumns:'1fr 40px 60px 40px', gap:8, alignItems:'center', borderBottom:'1px solid var(--border)', paddingBottom:8 }}>
                         <span style=${{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>${getMenuName(t.menuId)}</span>
                         <span style=${{ fontSize:13, textAlign:'center' }}>${t.qty}</span>
-                        <input type="number" class="input-field" style=${{ padding:'4px 6px', textAlign:'center', height:32 }} placeholder="0" min="0" max=${t.qty}
-                          value=${ambilSisa[t.menuId]||''} onInput=${e => setAmbilSisa({...ambilSisa, [t.menuId]: e.target.value})} />
+                        <input type="number" class="input-field" style=${{ padding:'4px 6px', textAlign:'center', height:32 }} placeholder="0" min="0" max=${t.qty} value=${ambilSisa[t.menuId]||''} onInput=${e => setAmbilSisa({...ambilSisa, [t.menuId]: e.target.value})} />
                         <span style=${{ fontSize:14, fontWeight:700, textAlign:'center', color: terjual>0?'var(--success)':'var(--muted)' }}>${terjual}</span>
                       </div>
                     `;
                   })}
-                  <div style=${{marginTop:8, paddingTop:8, borderTop:'1px dashed var(--border)', fontSize:12, color:'var(--muted)'}}>
-                    <div>Harga Jual: Rp ${formatRp(settings.hargaJual)} /pcs</div>
-                    <div>Komisi Lapak: Rp ${formatRp(settings.komisi)} /pcs</div>
-                  </div>
                 </div>
                 <button class="btn-primary" style=${{ background:'var(--ink)', borderColor:'var(--ink)' }} onClick=${saveAmbil}><${I.Printer} style=${{width:16,height:16}}/> Simpan & Cetak Rekap</button>
               </div>
@@ -906,14 +982,8 @@ function App() {
         ${modal === 'scan' && html`
           <div class="modal-overlay anim-in" onClick=${e => e.target === e.currentTarget && setModal(null)}>
             <div class="modal-box anim-up">
-              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3 style=${{ fontSize:16, fontWeight:700 }}>Scan Barcode Struk</h3>
-                <button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button>
-              </div>
-              <div style=${{ padding:20 }}>
-                <p style=${{ fontSize:13, color:'var(--muted)', marginBottom:12, textAlign:'center' }}>Arahkan kamera ke barcode pada struk titipan untuk memproses pengambilan.</p>
-                <div id="qr-reader" style=${{ width: '100%', minHeight: 250, background: '#000', borderRadius: 8 }}></div>
-              </div>
+              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}><h3 style=${{ fontSize:16, fontWeight:700 }}>Scan QR Code Struk</h3><button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button></div>
+              <div style=${{ padding:20 }}><p style=${{ fontSize:13, color:'var(--muted)', marginBottom:12, textAlign:'center' }}>Arahkan kamera ke QR Code pada struk titipan untuk memproses pengambilan.</p><div id="qr-reader" style=${{ width: '100%', minHeight: 250, background: '#000', borderRadius: 8 }}></div></div>
             </div>
           </div>
         `}
@@ -921,47 +991,26 @@ function App() {
         ${modal === 'harian' && html`
           <div class="modal-overlay anim-in" onClick=${e => e.target === e.currentTarget && setModal(null)}>
             <div class="modal-box anim-up">
-              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3 style=${{ fontSize:16, fontWeight:700 }}>Buat Menu Harian</h3>
-                <button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button>
-              </div>
+              <div style=${{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}><h3 style=${{ fontSize:16, fontWeight:700 }}>Cetak Menu Harian</h3><button class="btn-ghost" style=${{ padding:'4px', border:'none' }} onClick=${() => setModal(null)}><${I.X} style=${{width:20,height:20}} /></button></div>
               <div style=${{ padding:20, display:'flex', flexDirection:'column', gap:16 }}>
-                <div>
-                  <label style=${{ fontSize:12, fontWeight:600, display:'block', marginBottom:4 }}>Tanggal</label>
-                  <input type="date" class="input-field" value=${harianDate} onInput=${e => setHarianDate(e.target.value)} />
-                </div>
+                <div><label style=${{ fontSize:12, fontWeight:600, display:'block', marginBottom:4 }}>Tanggal</label><input type="date" class="input-field" value=${harianDate} onInput=${e => setHarianDate(e.target.value)} /></div>
                 <div style=${{ background:'var(--paper2)', padding:12, borderRadius:8, border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:8, maxHeight:'40vh', overflowY:'auto' }}>
-                  <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                    <span style=${{ fontSize:13, fontWeight:600 }}>Pilih Menu:</span>
-                    <button class="btn-ghost" style=${{ padding:'4px 8px', fontSize:11 }} onClick=${() => {
-                      const allOn = Object.keys(harianSelected).length === menus.length;
-                      const nextSt = {};
-                      if(!allOn) menus.forEach(m => nextSt[m.id] = true);
-                      setHarianSelected(nextSt);
-                    }}>${Object.keys(harianSelected).length === menus.length ? 'Batal Semua' : 'Pilih Semua'}</button>
-                  </div>
+                  <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}><span style=${{ fontSize:13, fontWeight:600 }}>Pilih Menu:</span><button class="btn-ghost" style=${{ padding:'4px 8px', fontSize:11 }} onClick=${() => { const allOn = Object.keys(harianSelected).length === menus.length; const nextSt = {}; if(!allOn) menus.forEach(m => nextSt[m.id] = true); setHarianSelected(nextSt); }}>${Object.keys(harianSelected).length === menus.length ? 'Batal Semua' : 'Pilih Semua'}</button></div>
                   ${menus.map(m => html`
                     <label style=${{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', padding:'4px 0' }}>
-                      <input type="checkbox" style=${{ width:18, height:18, accentColor:'var(--accent)' }} 
-                        checked=${!!harianSelected[m.id]} onChange=${e => setHarianSelected({...harianSelected, [m.id]: e.target.checked})} />
-                      <div style=${{ display:'flex', flexDirection:'column' }}>
-                        <span style=${{ fontSize:14, fontWeight:500 }}>${m.nama}</span>
-                      </div>
+                      <input type="checkbox" style=${{ width:18, height:18, accentColor:'var(--accent)' }} checked=${!!harianSelected[m.id]} onChange=${e => setHarianSelected({...harianSelected, [m.id]: e.target.checked})} />
+                      <span style=${{ fontSize:14, fontWeight:500 }}>${m.nama}</span>
                     </label>
                   `)}
                 </div>
-                <button class="btn-primary" onClick=${cetakHarian}><${I.Printer} style=${{width:16,height:16}}/> Cetak PDF / JPG</button>
+                <button class="btn-primary" onClick=${cetakHarian}><${I.Printer} style=${{width:16,height:16}}/> Cetak Halaman Warna (PDF)</button>
               </div>
             </div>
           </div>
         `}
         ${toast && html`<${Toast} msg=${toast.msg} type=${toast.type} />`}
       </div>
-
-      <!-- PRINT CONTAINER ROOT -->
-      <div class="print-only">
-        <${PrintOverlay} printData=${printData} settings=${settings} getSupplierName=${getSupplierName} getMenuName=${getMenuName} />
-      </div>
+      <div class="print-only"><${PrintOverlay} printData=${printData} settings=${settings} getSupplierName=${getSupplierName} getMenuName=${getMenuName} /></div>
     </div>
   `;
 }
