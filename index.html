@@ -136,11 +136,36 @@ import htm from 'https://esm.sh/htm@3.1.1';
 
 const html = htm.bind(h);
 
-// Template Google Apps Script lengkap - Diperbarui untuk membuat Sheet Transaksi & Master Data rapi
+// Template Google Apps Script lengkap - Diperbarui untuk Two-Way Sync
 const GAS_TEMPLATE = `function doPost(e) {
   try {
-    var data = JSON.parse(e.postData.contents);
+    var req = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    var dbSheet = ss.getSheetByName("DB_Sync");
+    if (!dbSheet) {
+      dbSheet = ss.insertSheet("DB_Sync");
+      dbSheet.hideSheet();
+      dbSheet.appendRow(["lastUpdated", "payload"]);
+      dbSheet.appendRow([0, "{}"]);
+    }
+    
+    var cloudUpdated = Number(dbSheet.getRange(2, 1).getValue()) || 0;
+    var clientUpdated = Number(req.lastUpdated) || 0;
+    
+    // Perbandingan waktu update
+    if (clientUpdated < cloudUpdated) {
+      var cloudPayloadStr = dbSheet.getRange(2, 2).getValue();
+      var cloudPayload = cloudPayloadStr ? JSON.parse(cloudPayloadStr) : {};
+      return ContentService.createTextOutput(JSON.stringify({ status: "pull", lastUpdated: cloudUpdated, payload: cloudPayload })).setMimeType(ContentService.MimeType.JSON);
+    } else if (clientUpdated === cloudUpdated) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "sync", lastUpdated: cloudUpdated })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Jika klien lebih update, timpa data Cloud
+    var data = req.payload;
+    dbSheet.getRange(2, 1).setValue(clientUpdated);
+    dbSheet.getRange(2, 2).setValue(JSON.stringify(data));
     
     var getSupName = function(id) {
       if (!data.suppliers) return id;
@@ -173,7 +198,6 @@ const GAS_TEMPLATE = `function doPost(e) {
     }
 
     var syncTime = new Date();
-
     if(sheetTx.getLastRow() > 1) sheetTx.getRange(2, 1, sheetTx.getLastRow()-1, sheetTx.getLastColumn()).clearContent();
     if(sheetMaster.getLastRow() > 1) sheetMaster.getRange(2, 1, sheetMaster.getLastRow()-1, sheetMaster.getLastColumn()).clearContent();
 
@@ -206,9 +230,9 @@ const GAS_TEMPLATE = `function doPost(e) {
     if (txRows.length > 0) sheetTx.getRange(2, 1, txRows.length, txRows[0].length).setValues(txRows);
     if (masterRows.length > 0) sheetMaster.getRange(2, 1, masterRows.length, masterRows[0].length).setValues(masterRows);
 
-    return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
+    return ContentService.createTextOutput(JSON.stringify({ status: "pushed", lastUpdated: clientUpdated })).setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
-    return ContentService.createTextOutput("Error: " + err.toString()).setMimeType(ContentService.MimeType.TEXT);
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
 }`;
 
@@ -284,12 +308,10 @@ function PrintOverlay({ printData, settings, getSupplierName, getMenuName }) {
     <div class="dashed-line"></div>
   `;
 
-  // === CETAK STRUK KASIR ===
   if (printData.type === 'kasir') {
     return html`<${Struk} receipt=${printData.receipt} bizInfo=${biz} />`;
   }
 
-  // === CETAK TITIP & AMBIL ===
   if (printData.type === 'titip' || printData.type === 'ambil') {
     const tgl = dateID(printData.tanggal, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
     const supName = getSupplierName(printData.supplierId);
@@ -335,7 +357,6 @@ function PrintOverlay({ printData, settings, getSupplierName, getMenuName }) {
     `;
   }
 
-  // === CETAK HARIAN ===
   if (printData.type === 'harian') {
     const tgl = dateID(printData.tanggal, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const bg = settings.harianBgColor || '#f9fafb';
@@ -368,7 +389,6 @@ function PrintOverlay({ printData, settings, getSupplierName, getMenuName }) {
     `;
   }
 
-  // === CETAK REKAP ===
   if (printData.type === 'rekap') {
     const tgl = dateID(printData.tanggal, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     return html`
@@ -390,7 +410,6 @@ function PrintOverlay({ printData, settings, getSupplierName, getMenuName }) {
       </div>
     `;
   }
-
   return null;
 }
 
@@ -450,9 +469,7 @@ function Kasir({ menus, hargaJual, bizInfo, notify, executePrint }) {
   const omzet = viewSales.reduce((s, x) => s + x.total, 0);
   const viewPcs = viewSales.reduce((s, x) => s + x.items.reduce((a, i) => a + i.qty, 0), 0);
 
-  const cetak = (sale) => {
-    executePrint({ type: 'kasir', receipt: sale });
-  };
+  const cetak = (sale) => { executePrint({ type: 'kasir', receipt: sale }); };
 
   const bayarDanCetak = () => {
     if (!canPay) return;
@@ -579,17 +596,57 @@ function App() {
   useEffect(() => { if (activeTab === 'pengaturan') setFormSet(settings); }, [activeTab]);
 
   const SYNC_MAP = { tb_suppliers: 'suppliers', tb_menus: 'menus', tb_titip: 'titip', tb_ambil: 'ambil' };
-  const saveState = (key, data, setter) => {
-    setter(data); LS.set(key, data);
-    const f = SYNC_MAP[key];
-    if (f) syncToCloud({ suppliers, menus, titip, ambil, [f]: data });
-  };
-  const syncToCloud = async (payload, manual) => {
+  
+  const syncToCloud = async (manual = false) => {
     if(!syncUrl) { if(manual) notify('Isi URL sinkronisasi dulu', 'err'); return; }
     try {
-      await fetch(syncUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload || { suppliers, menus, titip, ambil }) });
-      if(manual) notify('Sinkronisasi terkirim');
-    } catch(e) { console.warn('Sync error', e); if(manual) notify('Sinkronisasi gagal', 'err'); }
+      const payload = {
+        suppliers: LS.get('tb_suppliers', []),
+        menus: LS.get('tb_menus', []),
+        titip: LS.get('tb_titip', []),
+        ambil: LS.get('tb_ambil', [])
+      };
+      
+      let lastUpd = LS.get('tb_lastUpdated', 0);
+      if (lastUpd === 0 && (payload.suppliers.length > 0 || payload.menus.length > 0)) {
+        lastUpd = Date.now(); LS.set('tb_lastUpdated', lastUpd);
+      }
+      
+      const res = await fetch(syncUrl, { 
+        method: 'POST',
+        body: JSON.stringify({ lastUpdated: lastUpd, payload }) 
+      }).then(r => r.json());
+      
+      if (res.status === 'pull' && res.payload) {
+        LS.set('tb_suppliers', res.payload.suppliers || []); setSuppliers(res.payload.suppliers || []);
+        LS.set('tb_menus', res.payload.menus || []); setMenus(res.payload.menus || []);
+        LS.set('tb_titip', res.payload.titip || []); setTitip(res.payload.titip || []);
+        LS.set('tb_ambil', res.payload.ambil || []); setAmbil(res.payload.ambil || []);
+        LS.set('tb_lastUpdated', res.lastUpdated);
+        if(manual) notify('Data berhasil ditarik dari Cloud', 'info');
+      } else if (res.status === 'pushed' && manual) {
+        notify('Cloud berhasil diperbarui');
+      } else if (res.status === 'sync' && manual) {
+        notify('Data sudah tersinkronisasi (Paling Update)');
+      } else if (res.status === 'error' && manual) {
+        notify('Error: ' + res.message, 'err');
+      }
+    } catch(e) { 
+      console.warn('Sync error', e); 
+      if(manual) notify('Sinkronisasi gagal (Cek URL/Jaringan)', 'err'); 
+    }
+  };
+
+  useEffect(() => {
+    // Jalankan sync background saat aplikasi dibuka (jika URL sudah disetel)
+    if (LS.get('tb_syncUrl')) syncToCloud(false);
+  }, []);
+
+  const saveState = (key, data, setter) => {
+    setter(data); LS.set(key, data);
+    LS.set('tb_lastUpdated', Date.now()); // Update timestamp pembaruan lokal
+    const f = SYNC_MAP[key];
+    if (f) syncToCloud(false); // Dorong perubahan di latar belakang
   };
 
   const getSupplierName = (id) => { const s = suppliers.find(x => x.id === id); return s ? s.nama : 'Unknown'; };
@@ -598,9 +655,7 @@ function App() {
   const [modal, setModal] = useState(null);
   const todayStr = localDate();
   
-  // State filter tanggal khusus untuk tab Transaksi
   const [txDate, setTxDate] = useState(todayStr);
-
   const [printData, setPrintData] = useState(null);
 
   const executePrint = (data) => {
@@ -677,14 +732,12 @@ function App() {
     if(!titipSup) return notify('Pilih supplier dulu', 'err');
     if(items.length === 0) return notify('Masukkan jumlah penitipan minimal 1', 'err');
     if (!editingTitipId) {
-      // Pengecekan duplikat berdasarkan txDate (tanggal filter saat ini)
       const isDuplicate = titip.find(t => t.tanggal === txDate && t.supplierId === titipSup);
       if (isDuplicate && !confirm(`Peringatan: Supplier sudah menitip barang di tanggal ini. Lanjutkan (kloter kedua)?`)) return;
     }
     else if (ambil.some(a => a.titipId === editingTitipId) && !confirm('Titipan ini sudah diproses pengambilan. Mengubah jumlah tidak mengubah data pengambilan. Lanjutkan?')) return;
     
     const oldT = titip.find(t => t.id === editingTitipId);
-    // Jika data baru, gunakan txDate (tanggal yang sedang dilihat), agar langsung muncul di UI
     const record = { id: editingTitipId || 'ttp-'+Date.now(), tanggal: oldT ? oldT.tanggal : txDate, supplierId: titipSup, items };
     let newTitip = [...titip];
     if(editingTitipId) { const idx = newTitip.findIndex(t => t.id === editingTitipId); if(idx >= 0) newTitip[idx] = record; } 
@@ -727,7 +780,6 @@ function App() {
     }
     const oldA = ambil.find(a => a.id === editingAmbilId);
     const linkedTitip = titip.find(t => t.id === ambilRefTitipId);
-    // Sinkronisasi tanggal pengambilan dengan tanggal titipan (txDate/tanggal asli)
     const recordTanggal = oldA ? oldA.tanggal : (linkedTitip ? linkedTitip.tanggal : txDate);
     const record = { id: editingAmbilId || 'amb-'+Date.now(), titipId: ambilRefTitipId, tanggal: recordTanggal, supplierId: ambilSup, items, hargaJual: oldA ? oldA.hargaJual : settings.hargaJual, komisi: oldA ? oldA.komisi : settings.komisi };
     let newAmbil = [...ambil];
@@ -944,11 +996,11 @@ function App() {
           
           <div style=${{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
             <h3 style=${{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:6, marginBottom:16 }}><${I.Cloud} style=${{width:18,height:18}}/> Cloud Sinkronisasi</h3>
-            <p style=${{fontSize:12, color:'var(--muted)', marginBottom:12}}>1. Buat Google Apps Script baru dan salin kode ini untuk mencadangkan seluruh data JSON ke dalam Spreadsheet yang rapi:</p>
-            <textarea class="input-field" rows="14" readOnly style=${{fontFamily:'monospace', fontSize:11, marginBottom:12, background:'var(--ink)', color:'#fff'}} value=${GAS_TEMPLATE} />
+            <p style=${{fontSize:12, color:'var(--muted)', marginBottom:12}}>1. Buat Google Apps Script baru dan salin kode ini untuk fungsi tarik-dorong otomatis berdasarkan yang paling update (Two-Way Sync):</p>
+            <textarea class="input-field" rows="18" readOnly style=${{fontFamily:'monospace', fontSize:11, marginBottom:12, background:'var(--ink)', color:'#fff'}} value=${GAS_TEMPLATE} />
             <p style=${{fontSize:12, color:'var(--muted)', marginBottom:12}}>2. Lakukan <b>Deploy as Web App</b> (Who has access: Anyone), lalu salin dan tempel Web App URL-nya ke bawah ini:</p>
             <input type="url" class="input-field" placeholder="https://script.google.com/macros/s/..." value=${syncUrl} onInput=${e => { setSyncUrl(e.target.value); LS.set('tb_syncUrl', e.target.value); }} style=${{ marginBottom:12 }} />
-            <button class="btn-ghost" onClick=${() => syncToCloud(null, true)}>Uji Sinkronisasi Sekarang</button>
+            <button class="btn-ghost" onClick=${() => syncToCloud(true)}>Uji Sinkronisasi Sekarang</button>
           </div>
         </div>
       `;
