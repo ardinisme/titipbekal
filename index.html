@@ -136,15 +136,79 @@ import htm from 'https://esm.sh/htm@3.1.1';
 
 const html = htm.bind(h);
 
-// Template Google Apps Script lengkap
+// Template Google Apps Script lengkap - Diperbarui untuk membuat Sheet Transaksi & Master Data rapi
 const GAS_TEMPLATE = `function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    sheet.appendRow([new Date(), JSON.stringify(data)]);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    var getSupName = function(id) {
+      if (!data.suppliers) return id;
+      for(var i=0; i<data.suppliers.length; i++) {
+        if(data.suppliers[i].id === id) return data.suppliers[i].nama;
+      }
+      return id;
+    };
+    
+    var getMenuName = function(id) {
+      if (!data.menus) return id;
+      for(var i=0; i<data.menus.length; i++) {
+        if(data.menus[i].id === id) return data.menus[i].nama;
+      }
+      return id;
+    };
+
+    var sheetTx = ss.getSheetByName("Transaksi");
+    if (!sheetTx) {
+      sheetTx = ss.insertSheet("Transaksi");
+      sheetTx.appendRow(["Update", "ID", "Tanggal", "Tipe", "Supplier", "Ref Titip", "Detail Menu"]);
+      sheetTx.getRange(1,1,1,7).setFontWeight("bold");
+    }
+    
+    var sheetMaster = ss.getSheetByName("Master Data");
+    if (!sheetMaster) {
+      sheetMaster = ss.insertSheet("Master Data");
+      sheetMaster.appendRow(["Update", "Kategori", "ID", "Nama", "Info Tambahan"]);
+      sheetMaster.getRange(1,1,1,5).setFontWeight("bold");
+    }
+
+    var syncTime = new Date();
+
+    if(sheetTx.getLastRow() > 1) sheetTx.getRange(2, 1, sheetTx.getLastRow()-1, sheetTx.getLastColumn()).clearContent();
+    if(sheetMaster.getLastRow() > 1) sheetMaster.getRange(2, 1, sheetMaster.getLastRow()-1, sheetMaster.getLastColumn()).clearContent();
+
+    var txRows = [];
+    var masterRows = [];
+
+    if (data.suppliers) {
+      data.suppliers.forEach(function(s) {
+        masterRows.push([syncTime, "Supplier", s.id, s.nama, "HP: " + (s.hp||'-') + " | Bank: " + (s.bank||'-') + " " + (s.rekening||'-')]);
+      });
+    }
+    if (data.menus) {
+      data.menus.forEach(function(m) {
+        masterRows.push([syncTime, "Menu", m.id, m.nama, "Kat: " + (m.kategori||'-') + " | Sup: " + getSupName(m.supplierId)]);
+      });
+    }
+    if (data.titip) {
+      data.titip.forEach(function(t) {
+        var itemsStr = t.items.map(function(i) { return getMenuName(i.menuId) + " (" + i.qty + " pcs)"; }).join(", ");
+        txRows.push([syncTime, t.id, t.tanggal, "Titip", getSupName(t.supplierId), "-", itemsStr]);
+      });
+    }
+    if (data.ambil) {
+      data.ambil.forEach(function(a) {
+        var itemsStr = a.items.map(function(i) { return getMenuName(i.menuId) + " (Sisa: " + i.sisa + ", Laku: " + i.terjual + ")"; }).join(", ");
+        txRows.push([syncTime, a.id, a.tanggal, "Ambil", getSupName(a.supplierId), a.titipId, itemsStr]);
+      });
+    }
+
+    if (txRows.length > 0) sheetTx.getRange(2, 1, txRows.length, txRows[0].length).setValues(txRows);
+    if (masterRows.length > 0) sheetMaster.getRange(2, 1, masterRows.length, masterRows[0].length).setValues(masterRows);
+
     return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
   } catch(err) {
-    return ContentService.createTextOutput("Error: " + err.toString());
+    return ContentService.createTextOutput("Error: " + err.toString()).setMimeType(ContentService.MimeType.TEXT);
   }
 }`;
 
@@ -880,8 +944,8 @@ function App() {
           
           <div style=${{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
             <h3 style=${{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:6, marginBottom:16 }}><${I.Cloud} style=${{width:18,height:18}}/> Cloud Sinkronisasi</h3>
-            <p style=${{fontSize:12, color:'var(--muted)', marginBottom:12}}>1. Buat Google Apps Script baru dan salin kode ini untuk mencadangkan seluruh data JSON ke dalam Spreadsheet:</p>
-            <textarea class="input-field" rows="9" readOnly style=${{fontFamily:'monospace', fontSize:11, marginBottom:12, background:'var(--ink)', color:'#fff'}} value=${GAS_TEMPLATE} />
+            <p style=${{fontSize:12, color:'var(--muted)', marginBottom:12}}>1. Buat Google Apps Script baru dan salin kode ini untuk mencadangkan seluruh data JSON ke dalam Spreadsheet yang rapi:</p>
+            <textarea class="input-field" rows="14" readOnly style=${{fontFamily:'monospace', fontSize:11, marginBottom:12, background:'var(--ink)', color:'#fff'}} value=${GAS_TEMPLATE} />
             <p style=${{fontSize:12, color:'var(--muted)', marginBottom:12}}>2. Lakukan <b>Deploy as Web App</b> (Who has access: Anyone), lalu salin dan tempel Web App URL-nya ke bawah ini:</p>
             <input type="url" class="input-field" placeholder="https://script.google.com/macros/s/..." value=${syncUrl} onInput=${e => { setSyncUrl(e.target.value); LS.set('tb_syncUrl', e.target.value); }} style=${{ marginBottom:12 }} />
             <button class="btn-ghost" onClick=${() => syncToCloud(null, true)}>Uji Sinkronisasi Sekarang</button>
